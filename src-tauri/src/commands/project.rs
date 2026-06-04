@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 use crate::ass::{decode::decode_file, parse::parse_dialogues, tags::strip_for_text};
-use crate::config::languages::{detect_source_language, languages, Language};
+use crate::config::languages::{detect_source_language, get_language, languages, Language};
 use crate::config::projects::{self, FolderPrefs, RecentFolder};
 use crate::config::store as config_store;
 use crate::error::{AppError, AppResult};
@@ -23,8 +23,11 @@ pub fn list_languages() -> Vec<Language> {
 #[tauri::command]
 pub fn list_recents(app: AppHandle) -> AppResult<Vec<RecentFolder>> {
     let mut cfg = projects::load(&app)?;
+    let before = cfg.recents.len();
     projects::prune_recents(&mut cfg, |p| Path::new(p).is_dir());
-    projects::save(&app, &cfg)?;
+    if cfg.recents.len() != before {
+        projects::save(&app, &cfg)?;
+    }
     Ok(cfg.recents)
 }
 
@@ -83,7 +86,6 @@ pub async fn open_folder(app: AppHandle, path: String, now: i64) -> AppResult<Pr
     .await
     .map_err(|e| AppError::Other(e.to_string()))?;
 
-    let detected_world = detect(&analyzed.combined_text, pair.supports_world_detection);
     let detected_source_lang = detect_source_language(&analyzed.combined_text);
 
     let prefs = projects::resolve_prefs(
@@ -92,6 +94,17 @@ pub async fn open_folder(app: AppHandle, path: String, now: i64) -> AppResult<Pr
         &app_cfg.default_source,
         &app_cfg.default_target,
     );
+
+    // Capabilities + world detection follow the *resolved* source language
+    // (saved → detected → default), not the pre-detection pair used for discovery.
+    let effective_src = get_language(&prefs.source_lang);
+    let supports_world = effective_src
+        .as_ref()
+        .map_or(false, |l| l.supports_world_detection);
+    let supports_glossary = effective_src
+        .as_ref()
+        .map_or(false, |l| l.supports_glossary);
+    let detected_world = detect(&analyzed.combined_text, supports_world);
 
     let mut projects_cfg = projects_cfg;
     projects::record_recent(&mut projects_cfg, &path, analyzed.files.len() as u32, now);
@@ -104,7 +117,7 @@ pub async fn open_folder(app: AppHandle, path: String, now: i64) -> AppResult<Pr
         detected_source_lang,
         detected_world,
         prefs,
-        supports_glossary: pair.supports_glossary,
+        supports_glossary,
     })
 }
 

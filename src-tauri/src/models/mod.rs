@@ -4,7 +4,9 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::config::projects::FolderPrefs;
 use crate::config::Driver;
+use crate::glossary::world_detector::WorldType;
 
 pub mod language_pair;
 
@@ -50,9 +52,6 @@ pub struct TestResult {
 pub struct FirstRunStatus {
     pub has_usable_connection: bool,
 }
-
-use crate::config::projects::FolderPrefs;
-use crate::glossary::world_detector::WorldType;
 
 /// One discovered source file.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
