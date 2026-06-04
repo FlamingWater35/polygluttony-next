@@ -49,6 +49,7 @@ export function ProjectPage() {
   const sameLang = prefs.source_lang === prefs.target_lang;
   const sourceLang = languages.find((l) => l.code === prefs.source_lang);
   const showWorld = !!sourceLang?.supports_world_detection;
+  const showGlossary = !!sourceLang?.supports_glossary;
   const effectiveWorld: WorldType = prefs.world_override ?? view.detected_world;
   const folderName = view.folder.split(/[/\\]/).pop() || view.folder;
 
@@ -146,7 +147,7 @@ export function ProjectPage() {
 
       <div className="flex items-center gap-3 border-t border-border bg-[color:var(--popover)] px-5 py-3">
         <span className="text-[11px] text-muted-foreground">Next:</span>
-        {view.supports_glossary ? (
+        {showGlossary ? (
           <Button variant="secondary" onClick={() => navigate({ to: "/glossary" })}>
             <BookOpen className="size-4" /> Build a glossary
           </Button>
