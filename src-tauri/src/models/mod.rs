@@ -50,3 +50,29 @@ pub struct TestResult {
 pub struct FirstRunStatus {
     pub has_usable_connection: bool,
 }
+
+use crate::config::projects::FolderPrefs;
+use crate::glossary::world_detector::WorldType;
+
+/// One discovered source file.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct SourceFile {
+    pub path: String,
+    pub name: String,
+    pub dialogue_count: u32,
+    pub has_translation: bool,
+}
+
+/// Result of opening a folder (O6/O7/O8 bundled).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct ProjectView {
+    pub folder: String,
+    pub files: Vec<SourceFile>,
+    pub total_dialogue_lines: u32,
+    pub detected_source_lang: Option<String>,
+    pub detected_world: WorldType,
+    pub prefs: FolderPrefs,
+    pub supports_glossary: bool,
+}
