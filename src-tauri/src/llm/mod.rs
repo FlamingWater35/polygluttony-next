@@ -7,3 +7,5 @@
 //!
 //! Planned submodules: `client`, `base`, `anthropic`, `openai`,
 //! `openai_responses`, `debug_logger`.
+
+pub mod error;

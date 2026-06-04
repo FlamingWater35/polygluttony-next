@@ -14,6 +14,9 @@ pub enum AppError {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 
+    #[error(transparent)]
+    Llm(#[from] crate::llm::error::LlmError),
+
     #[error("{0}")]
     Other(String),
 }
