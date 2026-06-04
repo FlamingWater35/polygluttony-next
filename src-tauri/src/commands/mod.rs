@@ -4,6 +4,9 @@
 pub mod connections;
 pub use connections::*;
 
+pub mod project;
+pub use project::*;
+
 use crate::models::AppInfo;
 
 /// Returns app/core metadata. Used by the webview as a startup health check for

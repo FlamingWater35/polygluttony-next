@@ -10,6 +10,9 @@ export function StatusBar() {
   const workdir = useAppStore((s) => s.workdir);
   const sourceLang = useAppStore((s) => s.sourceLang);
   const targetLang = useAppStore((s) => s.targetLang);
+  const worldType = useAppStore((s) => s.worldType);
+  const fileCount = useAppStore((s) => s.fileCount);
+  const lineCount = useAppStore((s) => s.dialogueLineCount);
   const connection = useAppStore((s) => s.activeConnection);
   const { data: appInfo } = useQuery({ queryKey: ["app-info"], queryFn: ipc.appInfo });
 
@@ -20,8 +23,11 @@ export function StatusBar() {
         <span className="truncate">{workdir ?? "No folder selected"}</span>
       </span>
       <Separator orientation="vertical" className="h-4" />
-      <span className="shrink-0 tabular-nums">— files · — lines</span>
+      <span className="shrink-0 tabular-nums">
+        {workdir ? `${fileCount} files · ${lineCount} lines` : "— files · — lines"}
+      </span>
       <span className="flex-1" />
+      {worldType ? <StatusChip variant="muted">{worldType}</StatusChip> : null}
       <span className="shrink-0">
         {sourceLang}→{targetLang}
       </span>

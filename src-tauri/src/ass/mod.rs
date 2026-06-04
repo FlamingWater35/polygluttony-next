@@ -5,3 +5,7 @@
 //! override tags (`{\pos(x,y)}`, `{\an8}`, font overrides) by tracked position.
 //!
 //! Planned submodules: `ass_file`, `ass_parser`, `dialogue_line`, `ass_tags`.
+
+pub mod decode;
+pub mod parse;
+pub mod tags;

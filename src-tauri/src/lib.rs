@@ -17,6 +17,7 @@ mod models;
 // Translation engine. Ported from the original Python `subs_translator` package;
 // implementation lands here incrementally.
 mod ass;
+mod utils;
 mod glossary;
 mod llm;
 mod translation;
@@ -51,6 +52,12 @@ pub fn run() {
             commands::list_presets,
             commands::test_connection,
             commands::list_models,
+            commands::list_languages,
+            commands::list_recents,
+            commands::remove_recent,
+            commands::clear_recents,
+            commands::save_folder_prefs,
+            commands::open_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

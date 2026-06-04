@@ -34,13 +34,28 @@ const ITEMS: RailItem[] = [
 export function NavRail() {
   const workdir = useAppStore((s) => s.workdir);
   const hasUsableConnection = useAppStore((s) => s.hasUsableConnection);
+  const hasUntranslated = useAppStore((s) => s.hasUntranslated);
+  const hasTranslated = useAppStore((s) => s.hasTranslated);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  // Returns a gating hint when the destination is disabled, else null.
+  const gateHint = (item: RailItem): string | null => {
+    if (!item.needsFolder) return null;
+    if (!workdir) return "Open a folder first";
+    if (item.to === "/translate") {
+      if (!hasUsableConnection) return "Connect an AI provider";
+      if (!hasUntranslated) return "No untranslated files in this folder";
+    }
+    if (item.to === "/verify" && !hasTranslated) return "Translate something first";
+    return null;
+  };
 
   const workflow = ITEMS.filter((i) => i.group === "workflow");
   const setup = ITEMS.filter((i) => i.group === "setup");
 
   const render = (item: RailItem) => {
-    const disabled = item.needsFolder && !workdir;
+    const hint = gateHint(item);
+    const disabled = hint !== null;
     const active = pathname.startsWith(item.to);
     const Icon = item.icon;
     const body = (
@@ -74,7 +89,7 @@ export function NavRail() {
           <TooltipTrigger asChild>
             <div>{body}</div>
           </TooltipTrigger>
-          <TooltipContent side="right">Open a folder first</TooltipContent>
+          <TooltipContent side="right">{hint}</TooltipContent>
         </Tooltip>
       );
     }
