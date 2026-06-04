@@ -1,12 +1,13 @@
 //! LLM client layer.
 //!
 //! Ports the Python `llm/` package: a driver abstraction over the Anthropic,
-//! OpenAI Chat Completions, and OpenAI Responses APIs, built on `reqwest` with
-//! streaming support for Anthropic extended thinking, plus optional debug
-//! request/response logging.
+//! OpenAI Chat Completions, and OpenAI Responses APIs, built on `reqwest`.
 //!
-//! Planned submodules: `client`, `base`, `anthropic`, `openai`,
-//! `openai_responses`, `debug_logger`.
+//! Step 1 implements only the one-shot [`LlmDriver::complete`] path plus a
+//! `/models` listing — enough to power connection testing, model autocomplete,
+//! and Custom API-format detection. Streaming (Anthropic extended thinking),
+//! the thinking-budget multiplier, and debug request/response logging arrive
+//! with the translation step.
 
 pub mod anthropic;
 pub mod detect;
