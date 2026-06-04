@@ -17,6 +17,7 @@ mod models;
 // Translation engine. Ported from the original Python `subs_translator` package;
 // implementation lands here incrementally.
 mod ass;
+mod utils;
 mod glossary;
 mod llm;
 mod translation;
