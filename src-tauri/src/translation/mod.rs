@@ -8,6 +8,8 @@
 //! Planned submodules: `translator`, `batch_manager`, `batch_translator`,
 //! `scope_calculator`, `verifier`, `progress`.
 
+pub mod batch;
+pub mod batching;
 pub mod parse_response;
 pub mod prompts;
 pub mod source_detect;
