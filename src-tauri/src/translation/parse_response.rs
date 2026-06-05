@@ -75,6 +75,18 @@ pub fn extract_object(raw: &str) -> Result<Value, ResponseParseError> {
     }
 }
 
+/// A bare JSON array of arbitrary objects (the verify fallback shape).
+///
+/// Used when the model returns `[{"id":5,"reason":"x"}]` directly instead of
+/// the expected `{"issues":[...]}` wrapper — e.g. when the response is
+/// truncated mid-object. Port of `utils/json_repairer.py` `extract_array`.
+pub fn extract_array(raw: &str) -> Result<Vec<Value>, ResponseParseError> {
+    let v = repair(raw)?;
+    v.as_array()
+        .cloned()
+        .ok_or_else(|| ResponseParseError("repaired JSON is not an array".into()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,5 +136,17 @@ mod tests {
         let raw = "```json\n{\"issues\": [{\"id\": 5, \"reason\": \"x\"}]}\n```";
         let v = extract_object(raw).unwrap();
         assert_eq!(v["issues"][0]["id"], 5);
+    }
+
+    #[test]
+    fn extract_array_bare_returns_items() {
+        let arr = extract_array(r#"[{"id":5,"reason":"x"}]"#).unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["id"], 5);
+    }
+
+    #[test]
+    fn extract_array_rejects_object() {
+        assert!(extract_array(r#"{"a":1}"#).is_err());
     }
 }

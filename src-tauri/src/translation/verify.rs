@@ -19,6 +19,12 @@
 //! **Quota formula**: matches Python exactly —
 //! `max(MIN, min(MAX, int(region_len * SAMPLE_RATE)))` where `int()` truncates
 //! (Rust `as usize` on an `f64` also truncates) (`verifier.py:290-292`).
+//!
+//! **Stage-1 `failed_line_ids` is deliberately broader than Python**: we return
+//! *all* drift-flagged IDs rather than just the single `drift_start` ID. This
+//! gives scope-calculation a richer signal — more candidate lines to re-translate
+//! — at the cost of a slightly wider retry window. The Python reference only
+//! tracks one ID here (`verifier.py:176`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -90,10 +96,13 @@ pub async fn verify_file(
         let Ok(resp) = svc.request(req).await else {
             continue; // verifier degrades gracefully (`verifier.py:399-400`)
         };
-        // {"issues":[{id,reason}]} with array fallback (`verifier.py:389-398`).
+        // `{"issues":[{id,reason}]}` is the expected shape; on parse failure
+        // try a bare array `[{id,reason},...]` (the model may truncate the
+        // outer wrapper when the context is nearly full). If both fail, degrade
+        // gracefully with an empty list (`verifier.py:389-398`).
         let raw_issues: Vec<serde_json::Value> = match parse_response::extract_object(&resp.text) {
             Ok(v) => v.get("issues").and_then(|i| i.as_array()).cloned().unwrap_or_default(),
-            Err(_) => Vec::new(),
+            Err(_) => parse_response::extract_array(&resp.text).unwrap_or_default(),
         };
         for item in raw_issues {
             let Some(id) = item.get("id").and_then(|i| i.as_u64()).map(|i| i as u32) else {
@@ -173,7 +182,7 @@ pub fn build_samples(
         // Quota: max(MIN, min(MAX, int(region_len * SAMPLE_RATE)))
         // `as usize` on f64 truncates (same as Python `int()`).
         let target: usize = (region.len() as f64 * SAMPLE_RATE) as usize;
-        let target = target.max(MIN_PER_REGION).min(MAX_PER_REGION);
+        let target = target.clamp(MIN_PER_REGION, MAX_PER_REGION);
 
         // Build candidate pool with the higher length threshold first;
         // fall back to the lower threshold if the pool is too small
@@ -280,6 +289,16 @@ mod tests {
         assert_eq!(r.failed_line_ids, [3].into());
         assert_eq!(r.issues.len(), 1);
         assert_eq!(r.issues[0].line_id, 3);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn bare_array_response_still_yields_issues() {
+        let driver =
+            ScriptedDriver::new(vec![Ok(r#"[{"id":3,"reason":"unrelated"}]"#.into())]);
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        let svc = LlmService::new(driver, 2, CancellationToken::new(), tx);
+        let r = verify_file(&svc, &pairs(12), &BTreeMap::new()).await;
+        assert_eq!(r.failed_line_ids, [3].into());
     }
 
     #[tokio::test(start_paused = true)]
