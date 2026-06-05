@@ -6,6 +6,13 @@ use crate::config::projects::Tone;
 use crate::error::AppResult;
 use crate::translation::run::{self, StartArgs};
 
+// JS-side key casing: Tauri v2's #[tauri::command] macro converts every Rust
+// snake_case parameter name to lowerCamelCase before matching against the
+// JSON payload — see tauri-macros/src/command/wrapper.rs lines 505-508
+// (`ArgumentCase::Camel => { key = key.to_lower_camel_case(); }`), with
+// `ArgumentCase::Camel` as the hard-coded default (line 51).
+// Therefore JS MUST send camelCase keys: `sourceLang`, `targetLang`, etc.
+// (Override with `#[tauri::command(rename_all = "snake_case")]` if desired.)
 #[tauri::command]
 pub async fn start_translation(
     app: AppHandle,
