@@ -5,10 +5,13 @@ import { WelcomePage } from "@/features/welcome/welcome-page";
 
 export const Route = createFileRoute("/")({
   beforeLoad: async () => {
-    // Seed the rail badge before first render (Welcome shows the first-run steps
-    // when there's no usable connection; no auto-redirect to Connections).
-    const status = await ipc.firstRunStatus();
-    useAppStore.getState().setHasUsableConnection(status.has_usable_connection);
+    // Seed connection state before first paint so it's correct everywhere (status
+    // bar + rail badge) without first visiting Connections: the active connection
+    // name and whether any connection is usable.
+    const view = await ipc.listConnections();
+    const store = useAppStore.getState();
+    store.setActiveConnection(view.active);
+    store.setHasUsableConnection(view.connections.some((c) => c.has_key));
   },
   component: WelcomePage,
 });
