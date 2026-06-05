@@ -100,6 +100,17 @@ pub fn set_prefs(cfg: &mut ProjectsConfig, path: &str, prefs: FolderPrefs) {
 
 /// Resolve effective prefs for a freshly opened folder: saved prefs win; otherwise
 /// seed source from detection → global default, target from global default.
+/// Tone implied by a detected/overridden world type. Keep in sync with
+/// `toneForWorld` in `src/features/project/project-page.tsx`.
+pub fn tone_for_world(world: crate::glossary::world_detector::WorldType) -> Tone {
+    use crate::glossary::world_detector::WorldType;
+    match world {
+        WorldType::Xianxia => Tone::Xianxia,
+        WorldType::Wuxia => Tone::Wuxia,
+        WorldType::Historical | WorldType::Modern => Tone::Standard,
+    }
+}
+
 pub fn resolve_prefs(
     saved: Option<FolderPrefs>,
     detected_source: Option<&str>,
@@ -143,6 +154,14 @@ pub fn save<R: Runtime>(app: &AppHandle<R>, cfg: &ProjectsConfig) -> AppResult<(
 mod tests {
     use super::*;
     use crate::glossary::world_detector::WorldType;
+
+    #[test]
+    fn tone_for_world_maps_martial_worlds() {
+        assert_eq!(tone_for_world(WorldType::Xianxia), Tone::Xianxia);
+        assert_eq!(tone_for_world(WorldType::Wuxia), Tone::Wuxia);
+        assert_eq!(tone_for_world(WorldType::Historical), Tone::Standard);
+        assert_eq!(tone_for_world(WorldType::Modern), Tone::Standard);
+    }
 
     #[test]
     fn record_recent_is_mru_and_capped() {

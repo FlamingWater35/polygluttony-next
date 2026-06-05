@@ -124,6 +124,12 @@ pub async fn open_folder(app: AppHandle, path: String, now: i64) -> AppResult<Pr
         .as_ref()
         .is_some_and(|l| l.supports_glossary);
     let detected_world = detect(&analyzed.combined_text, supports_world);
+    // Fresh folders inherit the tone implied by the detected world (xianxia/
+    // wuxia → matching tone); saved prefs are never touched. Non-Chinese
+    // sources chain to Standard automatically (detect() returns Modern).
+    if !had_saved {
+        prefs.tone = projects::tone_for_world(detected_world);
+    }
 
     let mut projects_cfg = projects_cfg;
     projects::record_recent(&mut projects_cfg, &path, analyzed.files.len() as u32, now);
