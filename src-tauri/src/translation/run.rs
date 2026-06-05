@@ -55,14 +55,12 @@ pub struct StartArgs {
     pub now: i64, // webview-supplied timestamp (same convention as open_folder)
 }
 
-/// Return the active connection if it is usable (non-empty API key, or a
-/// localhost/127.0.0.1 base URL which doesn't need one). Pure helper so it can
-/// be unit-tested without an AppHandle.
+/// Return the active connection if it is usable. Delegates the per-connection
+/// rule to `config_store::connection_is_usable` so both call sites stay in
+/// sync. Pure helper so it can be unit-tested without an AppHandle.
 pub fn usable_connection(cfg: &AppConfig) -> Option<Connection> {
     let conn = cfg.connections.get(&cfg.active_connection)?;
-    let key_ok = !conn.api_key.trim().is_empty();
-    let local = conn.base_url.contains("localhost") || conn.base_url.contains("127.0.0.1");
-    if key_ok || local {
+    if config_store::connection_is_usable(conn) {
         Some(conn.clone())
     } else {
         None
@@ -108,15 +106,17 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     let folder_key = args.folder.clone();
     let now = args.now;
     tauri::async_runtime::spawn(async move {
-        let mut results: Vec<FileResult> = Vec::new();
         while let Some(ev) = rx.recv().await {
-            if let RunEvent::RunFinished { results: r } = &ev {
-                results = r.clone();
+            // Persist BEFORE emitting RunFinished so that a UI handler that
+            // reads persisted verify data on this event never sees stale state.
+            if let RunEvent::RunFinished { results: ref r } = ev {
+                if !r.is_empty() {
+                    let _ = crate::config::verification::save_folder(
+                        &app_fwd, &folder_key, r, now,
+                    );
+                }
             }
             let _ = app_fwd.emit(events::TRANSLATION_EVENT, &ev);
-        }
-        if !results.is_empty() {
-            let _ = crate::config::verification::save_folder(&app_fwd, &folder_key, &results, now);
         }
         if let Some(state) = app_fwd.try_state::<RunState>() {
             *state.0.lock().await = None;
@@ -132,9 +132,13 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
         // Zip file names with task handles so a panicking task can emit a named error.
         let mut handles: Vec<(String, tauri::async_runtime::JoinHandle<FileResult>)> = Vec::new();
         for name in args.files {
-            let permit = match sem.clone().acquire_owned().await {
-                Ok(p) => p,
-                Err(_) => break,
+            // Race semaphore acquisition against cancellation for crisp shutdown.
+            let permit = tokio::select! {
+                res = sem.clone().acquire_owned() => match res {
+                    Ok(p) => p,
+                    Err(_) => break, // semaphore closed (shouldn't happen)
+                },
+                _ = cancel.cancelled() => break,
             };
             if cancel.is_cancelled() {
                 drop(permit);
@@ -178,13 +182,39 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
         for (name, handle) in handles {
             match handle.await {
                 Ok(r) => results.push(r),
-                Err(_panic) => {
-                    // Task panicked: emit a named error event and push a failure
-                    // result so the run doesn't silently drop the file.
+                Err(tauri_err) => {
+                    // Task panicked: extract the panic payload when possible.
+                    // tauri::async_runtime wraps tokio::task::JoinError inside
+                    // tauri::Error::JoinError; unwrap it to reach is_panic / into_panic.
+                    let message = if let tauri::Error::JoinError(je) = tauri_err {
+                        if je.is_panic() {
+                            let payload = je.into_panic();
+                            if let Some(s) = payload.downcast_ref::<&str>() {
+                                s.to_string()
+                            } else if let Some(s) = payload.downcast_ref::<String>() {
+                                s.clone()
+                            } else {
+                                "file task panicked".into()
+                            }
+                        } else {
+                            "file task panicked".into()
+                        }
+                    } else {
+                        "file task panicked".into()
+                    };
+                    // Emit both the error message and a State(Failed) so the UI
+                    // can mark the file as failed without a separate state event.
+                    let _ = tx
+                        .send(RunEvent::State {
+                            file: name.clone(),
+                            state: crate::events::FileStateKind::Failed,
+                            detail: None,
+                        })
+                        .await;
                     let _ = tx
                         .send(RunEvent::Error {
                             file: name.clone(),
-                            message: "file task panicked".into(),
+                            message,
                         })
                         .await;
                     results.push(FileResult {
@@ -224,26 +254,6 @@ pub async fn cancel(app: AppHandle) -> AppResult<()> {
 mod tests {
     use super::*;
     use crate::config::presets::default_config;
-    use crate::config::Driver;
-
-    fn conn_with_key(key: &str, base_url: &str) -> Connection {
-        Connection {
-            driver: Driver::Openai,
-            base_url: base_url.into(),
-            api_key: key.into(),
-            model: "m".into(),
-            max_tokens: None,
-            batch_dialogue_limit: None,
-            timeout: None,
-            connect_timeout: None,
-            concurrency: None,
-            thinking_enabled: None,
-            thinking_budget: None,
-            web_search: None,
-            prompt_template: None,
-            thinking_glossary_norm_budget: None,
-        }
-    }
 
     #[test]
     fn usable_connection_requires_key_or_localhost() {
