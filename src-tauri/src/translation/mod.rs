@@ -9,3 +9,4 @@
 //! `scope_calculator`, `verifier`, `progress`.
 
 pub mod parse_response;
+pub mod prompts;
