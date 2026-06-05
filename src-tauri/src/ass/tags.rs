@@ -16,7 +16,7 @@ pub fn strip_for_text(s: &str) -> String {
 /// Matches only ASS override tag blocks: `{` followed by `\` then non-`}` chars then `}`.
 /// Plain brace groups like `{note}` do not match (`ass_tags.py:68`).
 /// Note: positions are tracked in CHARS (not bytes) unlike Python's `original_position`
-/// which is a byte offset from `match.start()`. Both yield the same result for stripped_position
+/// which is a code-point (character) offset from `match.start()`. Both yield the same result for stripped_position
 /// because Python's `_calculate_stripped_position` also slices by chars via str indexing.
 static TAG: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"\{\\[^}]+\}").unwrap());
@@ -171,5 +171,12 @@ mod tests {
     fn no_tags_roundtrip() {
         let r = strip_positional("plain");
         assert_eq!(reapply(&r, "translated"), "translated");
+    }
+
+    #[test]
+    fn reapply_two_tags_accumulates_offsets() {
+        let r = strip_positional(r"{\an8}ab{\i1}cd");
+        assert_eq!(r.stripped, "abcd");
+        assert_eq!(reapply(&r, "WXYZ"), r"{\an8}WX{\i1}YZ");
     }
 }
