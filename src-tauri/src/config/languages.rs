@@ -13,6 +13,12 @@ pub struct Language {
     pub aliases: Vec<String>,
     pub output_suffix: String,
     pub character_pattern: Option<String>,
+    /// Pattern used ONLY by source-language detection when a script overlaps
+    /// another language's (ja's kana vs zh's shared han range). `None` falls
+    /// back to `character_pattern`. Backend-only — not serialized/exported.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub detection_pattern: Option<String>,
     pub supports_glossary: bool,
     pub supports_world_detection: bool,
 }
@@ -32,6 +38,7 @@ fn lang(
         aliases: aliases.iter().map(|s| s.to_string()).collect(),
         output_suffix: suffix.into(),
         character_pattern: pattern.map(|s| s.to_string()),
+        detection_pattern: None,
         supports_glossary: gloss,
         supports_world_detection: world,
     }
@@ -42,7 +49,14 @@ pub fn languages() -> Vec<Language> {
     vec![
         lang("zh", "Chinese", &["chi", "chs", "cht", "cn", "chinese"], "chi", Some(r"[\u{4E00}-\u{9FFF}]"), true, true),
         lang("ko", "Korean", &["kor", "korean"], "kor", Some(r"[\u{AC00}-\u{D7AF}\u{1100}-\u{11FF}]"), false, false),
-        lang("ja", "Japanese", &["jpn", "japanese"], "jpn", Some(r"[\u{3040}-\u{309F}\u{30A0}-\u{30FF}\u{4E00}-\u{9FFF}]"), false, false),
+        // ja: `character_pattern` (cleanup detection) keeps kana+han, but
+        // detection counts kana ONLY — the han range is shared with zh, so a
+        // han-inclusive pattern made ja ≥ zh for all Chinese text and any
+        // stray kana (kaomoji, `ー`) flipped detection to Japanese.
+        Language {
+            detection_pattern: Some(r"[\u{3040}-\u{309F}\u{30A0}-\u{30FF}]".into()),
+            ..lang("ja", "Japanese", &["jpn", "japanese"], "jpn", Some(r"[\u{3040}-\u{309F}\u{30A0}-\u{30FF}\u{4E00}-\u{9FFF}]"), false, false)
+        },
         lang("en", "English", &["eng", "english"], "eng", None, false, false),
         lang("es", "Spanish", &["spa", "spanish"], "spa", None, false, false),
         lang("fr", "French", &["fra", "french"], "fra", None, false, false),
@@ -78,11 +92,13 @@ pub fn get_language(code: &str) -> Option<Language> {
 }
 
 /// Guess the source language from dialogue text by counting characters matching
-/// each language's Unicode range; the highest count wins. None if no script chars.
+/// each language's Unicode range; the highest count wins. None if no script
+/// chars. Languages with a `detection_pattern` are counted by that exclusive
+/// script instead (ja by kana — see the table comment).
 pub fn detect_source_language(text: &str) -> Option<String> {
     let mut best: Option<(String, usize)> = None;
     for l in languages() {
-        let Some(pat) = &l.character_pattern else {
+        let Some(pat) = l.detection_pattern.as_ref().or(l.character_pattern.as_ref()) else {
             continue;
         };
         let re = regex::Regex::new(pat).expect("valid language pattern");
@@ -111,6 +127,18 @@ mod tests {
         assert_eq!(detect_source_language("修仙者突破金丹").as_deref(), Some("zh"));
         assert_eq!(detect_source_language("hello world"), None);
         assert_eq!(detect_source_language("Привет мир").as_deref(), Some("ru"));
+    }
+
+    #[test]
+    fn chinese_with_stray_kana_detects_zh() {
+        // Decorative katakana (kaomoji parts, prolonged-sound dashes) must not
+        // flip detection to Japanese — ja is detected by kana only.
+        assert_eq!(detect_source_language("修仙者突破金丹期了ノー").as_deref(), Some("zh"));
+    }
+
+    #[test]
+    fn kana_heavy_japanese_detects_ja() {
+        assert_eq!(detect_source_language("今日はとてもいい天気ですね").as_deref(), Some("ja"));
     }
 
     #[test]
