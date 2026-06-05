@@ -5,8 +5,7 @@
 //!
 //! - `translate.zh-en.txt`:        `{GLOSSARY}`, `{TONE}`
 //! - `translate.zh-en.qwen.txt`:   `{localization_style}`, `{glossary_formatted}`
-//! - `translate.generic.txt`:      `{source_language}`, `{target_language}`,
-//!                                  `{localization_style}`
+//! - `translate.generic.txt`:      `{source_language}`, `{target_language}`, `{localization_style}`
 
 use crate::config::projects::Tone;
 use crate::glossary::model::Glossary;
@@ -46,7 +45,9 @@ fn template(pair: &LanguagePair, variant: Option<&str>) -> &'static str {
 
 /// Fill all known placeholders for the selected template. Each template uses
 /// its own placeholder names (see module doc); we apply all substitutions and
-/// any that don't appear in the chosen template are simply no-ops.
+/// any that don't appear in the chosen template are simply no-ops. The templates
+/// define both UPPERCASE and lowercase variants; we fill both to prevent latent
+/// placeholder leaks (`core/batch_translator.py:433-445` only fills UPPERCASE).
 pub fn system_prompt(
     pair: &LanguagePair,
     glossary: &Glossary,
