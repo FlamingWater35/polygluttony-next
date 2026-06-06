@@ -15,8 +15,6 @@ use crate::translation::parse_response;
 /// **Deviation:** Python honoured the response's own `world_type` field
 /// (`glossary.py:237`, defaulting to "xianxia" when absent). We always
 /// preserve the original glossary's `world_type` — user overrides must win.
-// consumed by commands/glossary (later step-4 task)
-#[allow(dead_code)]
 pub async fn personalize_pass(
     svc: &LlmService,
     glossary: &Glossary,

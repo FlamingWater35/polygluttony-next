@@ -47,8 +47,6 @@ pub struct GlossaryDiff {
     pub has_changes: bool,
 }
 
-// consumed by GlossaryDiff::compute (called from commands/glossary, later step-4 task)
-#[allow(dead_code)]
 fn label(category: &str) -> String {
     let mut s = category.to_string();
     if let Some(first) = s.get_mut(0..1) {

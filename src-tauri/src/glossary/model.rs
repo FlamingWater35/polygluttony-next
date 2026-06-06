@@ -195,8 +195,6 @@ impl Glossary {
     }
 
     /// True if `key` exists in ANY category (`glossary.py:149-158`).
-    // consumed by the build pipeline (later step-4 task)
-    #[allow(dead_code)]
     pub fn has_key(&self, key: &str) -> bool {
         CATEGORIES.iter().any(|c| self.category(c).contains_key(key))
     }
@@ -211,8 +209,6 @@ impl Glossary {
     /// First-wins merge: only keys absent from ALL categories are added, values
     /// are validated and trimmed (`glossary.py:109-138`). Keys added earlier in
     /// this merge also block later categories (cross-category dedupe).
-    // consumed by the build pipeline (later step-4 task)
-    #[allow(dead_code)]
     pub fn merge_first_wins(&mut self, other: &Glossary) {
         for c in CATEGORIES {
             for (source, translation) in other.category(c) {
@@ -224,8 +220,6 @@ impl Glossary {
     }
 
     /// Drop empty values from all categories (`glossary.py:140-147`).
-    // consumed by the build pipeline (later step-4 task)
-    #[allow(dead_code)]
     pub fn deduplicate(&mut self) {
         for c in CATEGORIES {
             self.category_mut(c).retain(|_, v| !v.is_empty());
@@ -235,8 +229,6 @@ impl Glossary {
     /// Parse an LLM extraction response: accepts `{"terms": {...}}` or a bare
     /// category object; non-string values dropped
     /// (`glossary_builder.py:375` + `glossary.py:202-220`).
-    // consumed by the build pipeline (later step-4 task)
-    #[allow(dead_code)]
     pub fn from_terms_value(v: &serde_json::Value, world_type: &str) -> Glossary {
         let terms = match v.get("terms") {
             Some(t) if t.is_object() => t,
@@ -274,8 +266,6 @@ impl Glossary {
 
     /// Pretty-printed glossary.json — the file is meant to be hand-editable
     /// ("Open in editor", O15), so we write indent-2 like the Python tool.
-    // consumed by save_folder_glossary (io.rs)
-    #[allow(dead_code)]
     pub fn to_json_pretty(&self) -> String {
         serde_json::to_string_pretty(&self.to_value()).expect("serializable")
     }

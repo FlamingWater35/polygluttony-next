@@ -19,8 +19,6 @@ pub enum WorldType {
 impl WorldType {
     /// Lowercase string for prompts and the glossary.json `world_type` field
     /// (matches the serde `lowercase` rename).
-    // consumed by the glossary build pipeline (later step-4 task)
-    #[allow(dead_code)]
     pub fn as_str(self) -> &'static str {
         match self {
             WorldType::Xianxia => "xianxia",

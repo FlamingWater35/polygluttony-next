@@ -36,18 +36,14 @@ use crate::translation::parse_response;
 /// Slice a cross-file line stream into batches of `limit × 0.7` lines
 /// (`glossary_builder.py:136-138,235-241`; `reference_extractor.py:65-67,124-137`).
 /// The 30% headroom leaves room for prompt overhead.
-// also consumed by the reference extractor (reference.rs)
-#[allow(dead_code)]
 pub fn glossary_batches(lines: &[String], batch_limit: Option<u32>) -> Vec<String> {
     let limit = batch_limit.unwrap_or(crate::translation::batching::BATCH_LINE_LIMIT);
     let per = (((limit as f64) * 0.7) as usize).max(1);
     lines.chunks(per).map(|c| c.join("\n")).collect()
 }
 
-/// Everything O10 needs from the UI. The command layer (later task) assembles
-/// this from the project state + Glossary view options.
-// consumed by commands/glossary (later step-4 task)
-#[allow(dead_code)]
+/// Everything O10 needs from the UI. The command layer assembles this from the
+/// project state + Glossary view options.
 pub struct BuildJob {
     pub folder: PathBuf,
     /// File NAMES relative to `folder` (the Project view's `selected_files`).
@@ -66,8 +62,6 @@ pub struct BuildJob {
 /// Existing terms always win; `new_terms` only fills gaps. Every save (the
 /// incremental ones included) goes through this so a pre-existing glossary can
 /// never be clobbered by a partial build.
-// consumed by commands/glossary (later step-4 task)
-#[allow(dead_code)]
 pub(crate) fn merged_with_existing(existing: Option<&Glossary>, new_terms: &Glossary) -> Glossary {
     match existing {
         Some(e) => {
@@ -96,8 +90,6 @@ async fn log(tx: &mpsc::Sender<GlossaryEvent>, level: LogLevel, message: String)
 /// O10 build orchestrator. Always emits `Done {summary}` when a result exists
 /// (including aborted/cancelled/no-text); the only `Error` event is a
 /// final-save IO failure (the last incremental save remains on disk then).
-// consumed by commands/glossary (later step-4 task)
-#[allow(dead_code)]
 pub async fn build_glossary(
     job: BuildJob,
     svc: &LlmService,

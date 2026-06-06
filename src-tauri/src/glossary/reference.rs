@@ -26,8 +26,6 @@ use crate::llm::service::LlmService;
 use crate::llm::LlmRequest;
 use crate::translation::parse_response;
 
-// consumed by the async LLM extractor and O11 command (later step-4 tasks)
-#[allow(dead_code)]
 pub const CACHE_FILENAME: &str = "glossary-reference.json";
 
 const CATEGORY_LABELS: [(&str, &str); 6] = [
@@ -40,8 +38,6 @@ const CATEGORY_LABELS: [(&str, &str); 6] = [
 ];
 
 /// Six list-categories of English terms (no source mapping — guidance only).
-// consumed by the async LLM extractor (later step-4 task)
-#[allow(dead_code)]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ReferenceTerminology {
     #[serde(default)]
@@ -58,8 +54,6 @@ pub struct ReferenceTerminology {
     pub organizations: Vec<String>,
 }
 
-// all methods consumed by the async LLM extractor (later step-4 task)
-#[allow(dead_code)]
 impl ReferenceTerminology {
     fn category(&self, name: &str) -> &Vec<String> {
         match name {
@@ -147,8 +141,6 @@ impl ReferenceTerminology {
 
 /// Cache load: missing or corrupt ⇒ None. We deliberately do NOT delete a
 /// corrupt cache (Python does) — the user may want to fix it by hand.
-// consumed by the O11 command (later step-4 task)
-#[allow(dead_code)]
 pub fn load_cache(folder: &Path) -> Option<ReferenceTerminology> {
     let text = std::fs::read_to_string(folder.join(CACHE_FILENAME)).ok()?;
     serde_json::from_str(&text).ok()
@@ -171,8 +163,6 @@ pub fn clear_cache(folder: &Path) -> AppResult<()> {
 
 /// `folder/ref` → `folder/../ref` → `folder/../../ref`
 /// (`reference_loader.py:103-128`).
-// consumed by the async LLM extractor (later step-4 task)
-#[allow(dead_code)]
 pub fn find_ref_dir(folder: &Path) -> Option<PathBuf> {
     let mut candidates = vec![folder.join("ref")];
     if let Some(p) = folder.parent() {
@@ -189,8 +179,6 @@ pub fn find_ref_dir(folder: &Path) -> Option<PathBuf> {
 /// Deliberate improvement over Python: the extension check is
 /// case-insensitive (`.ASS` matches), whereas Python's `glob("*.ass")` was
 /// case-sensitive on Linux/macOS.
-// consumed by the async LLM extractor (later step-4 task)
-#[allow(dead_code)]
 pub fn ref_ass_files(dir: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
         .map(|rd| {
@@ -328,8 +316,6 @@ pub async fn extract_from_files(
 
 /// O11 auto path (`glossary_phase.py:122-182`): cached file → use; else ref/
 /// dir with `.ass` files → extract + cache; else None.
-// consumed by the O11 command (later step-4 task)
-#[allow(dead_code)]
 pub async fn load_or_extract(
     folder: &Path,
     svc: &LlmService,

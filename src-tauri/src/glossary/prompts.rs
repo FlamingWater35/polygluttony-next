@@ -22,8 +22,6 @@ const NORM_ITEMS: &str = include_str!("../../prompts/glossary-normalize-items.tx
 const NORM_ORGANIZATIONS: &str =
     include_str!("../../prompts/glossary-normalize-organizations.txt");
 const PERSONALIZE: &str = include_str!("../../prompts/glossary-personalize.txt");
-// consumed by the O11 reference extractor (later step-4 task)
-#[allow(dead_code)]
 pub const REFERENCE_EXTRACT: &str = include_str!("../../prompts/reference-extract.txt");
 
 /// Strip the first `## {heading}` section (everything from that heading up to
@@ -50,8 +48,6 @@ fn strip_section(text: &str, heading: &str) -> String {
 
 /// System prompt for one extraction batch. `variant` comes from
 /// `Connection.prompt_template` ("qwen" selects `glossary.qwen.txt`).
-// consumed by the extraction pipeline (later step-4 task)
-#[allow(dead_code)]
 pub fn extraction_prompt(
     world: &str,
     pair: &LanguagePair,
@@ -81,15 +77,11 @@ pub fn extraction_prompt(
     p
 }
 
-// consumed by the extraction pipeline (later step-4 task)
-#[allow(dead_code)]
 pub fn extraction_user_prompt(batch: &str) -> String {
     format!("Extract terms from this text:\n\n{batch}")
 }
 
 /// Per-category normalize prompt (`glossary_builder.py:459-467`).
-// consumed by the normalize pipeline (later step-4 task)
-#[allow(dead_code)]
 pub fn normalize_prompt(category: &str, world: &str) -> String {
     let template = match category {
         "characters" => NORM_CHARACTERS,
@@ -105,16 +97,12 @@ pub fn normalize_prompt(category: &str, world: &str) -> String {
 
 /// User prompt = the category's terms as pretty JSON
 /// (`glossary_builder.py:467`).
-// consumed by the normalize pipeline (later step-4 task)
-#[allow(dead_code)]
 pub fn normalize_user_prompt(terms: &BTreeMap<String, String>) -> String {
     serde_json::to_string_pretty(terms).expect("serializable")
 }
 
 /// Personalize prompt: `{donghua_title}` = first context line or "Unknown"
 /// (`glossary_builder.py:548-553`).
-// consumed by the personalize pipeline (later step-4 task)
-#[allow(dead_code)]
 pub fn personalize_prompt(world: &str, context: &str) -> String {
     let title =
         context.lines().next().map(str::trim).filter(|t| !t.is_empty()).unwrap_or("Unknown");
@@ -126,8 +114,6 @@ pub fn personalize_prompt(world: &str, context: &str) -> String {
 }
 
 /// `glossary_builder.py:554-556`.
-// consumed by the personalize pipeline (later step-4 task)
-#[allow(dead_code)]
 pub fn personalize_user_prompt(glossary: &Glossary, context: &str) -> String {
     let mut u = format!("Personalize this glossary:\n\n{}", glossary.to_json_pretty());
     if !context.is_empty() {
