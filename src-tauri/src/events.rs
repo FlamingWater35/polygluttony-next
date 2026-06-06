@@ -21,7 +21,10 @@ pub mod names {
 }
 
 /// Generic progress payload for a single unit of work (e.g. a file).
-// Step 4 (Glossary) will emit these on the progress channels.
+// Legacy placeholder from the initial event sketch. Not currently emitted by
+// any pipeline (step 4 uses `GLOSSARY_EVENT`; step 3 uses `TRANSLATION_EVENT`).
+// Retained for a potential future Verify or similar step that may want a
+// generic per-file progress payload.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/types/generated/")]
@@ -203,5 +206,8 @@ mod tests {
         let v = serde_json::to_value(&done).unwrap();
         assert_eq!(v["kind"], "done");
         assert_eq!(v["summary"]["terms_final"], 8);
+
+        let v = serde_json::to_value(&GlossaryEvent::FileChanged).unwrap();
+        assert_eq!(v, serde_json::json!({"kind": "file_changed"}));
     }
 }
