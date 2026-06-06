@@ -33,6 +33,16 @@ fn should_emit(last: &mut Option<Instant>, now: Instant, window: Duration) -> bo
     }
 }
 
+/// Returns `true` iff at least one path in the notify event is `glossary.json`.
+///
+/// Atomic-save renames produce events whose paths may include the temporary
+/// `.glossary.json.tmp` name; this filter passes only the final canonical name.
+fn is_glossary_event(paths: &[std::path::PathBuf]) -> bool {
+    paths
+        .iter()
+        .any(|p| p.file_name().is_some_and(|n| n == "glossary.json"))
+}
+
 /// Replaces any existing watch (single slot).
 // consumed by commands/glossary (later step-4 task)
 #[allow(dead_code)]
@@ -41,14 +51,8 @@ pub fn watch(app: AppHandle, state: &GlossaryWatchState, folder: &Path) -> AppRe
     let mut watcher = notify::recommended_watcher(
         move |res: Result<notify::Event, notify::Error>| {
             let Ok(event) = res else { return };
-            // Folder-level watch: only glossary.json matters. The atomic-save
-            // rename references both .glossary.json.tmp and glossary.json; the
-            // filename filter catches the final path.
-            if !event
-                .paths
-                .iter()
-                .any(|p| p.file_name().is_some_and(|n| n == "glossary.json"))
-            {
+            // Folder-level watch: only glossary.json matters.
+            if !is_glossary_event(&event.paths) {
                 return;
             }
             if should_emit(&mut last.lock().unwrap(), Instant::now(), DEBOUNCE) {
@@ -73,6 +77,7 @@ pub fn unwatch(state: &GlossaryWatchState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
     #[test]
@@ -82,5 +87,20 @@ mod tests {
         assert!(should_emit(&mut last, t0, Duration::from_millis(300)));
         assert!(!should_emit(&mut last, t0 + Duration::from_millis(100), Duration::from_millis(300)));
         assert!(should_emit(&mut last, t0 + Duration::from_millis(400), Duration::from_millis(300)));
+    }
+
+    #[test]
+    fn is_glossary_event_matches_canonical_name() {
+        // Exact glossary.json path → true.
+        let paths = vec![PathBuf::from("/some/folder/glossary.json")];
+        assert!(is_glossary_event(&paths));
+
+        // Temporary file only (atomic-save stage) → false.
+        let paths = vec![PathBuf::from("/some/folder/.glossary.json.tmp")];
+        assert!(!is_glossary_event(&paths));
+
+        // Unrelated file → false.
+        let paths = vec![PathBuf::from("/some/folder/episode01.ass")];
+        assert!(!is_glossary_event(&paths));
     }
 }

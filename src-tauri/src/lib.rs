@@ -37,6 +37,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .manage(translation::run::RunState::default())
+        .manage(glossary::run::GlossaryRunState::default())
+        .manage(glossary::watch::GlossaryWatchState::default())
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::list_connections,

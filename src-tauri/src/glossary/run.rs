@@ -180,6 +180,10 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     let app_for_release = app.clone();
     tauri::async_runtime::spawn(async move {
         build_glossary(job, &svc, personalize_svc.as_ref(), tx).await;
+        // Drop LlmService handles before releasing the slot so their internal
+        // log-adapter senders close before a new op can claim the channel.
+        drop(svc);
+        drop(personalize_svc);
         // tx dropped by build_glossary's end of scope → forwarder drains & exits.
         release_slot(&app_for_release).await;
     });
