@@ -82,6 +82,8 @@ export function ConnectionEditor({
   const [liveModels, setLiveModels] = useState<string[]>([]);
 
   const current = watch();
+  // Only true when the user explicitly selected the Custom preset; a blank new
+  // form sends detect=false — same behaviour the old "__detect__" sentinel had.
   const isCustom = presetKey === "custom";
   const curated = useMemo(
     () => presets.find((p) => p.key === presetKey)?.models ?? [],
@@ -137,13 +139,12 @@ export function ConnectionEditor({
       onSubmit={handleSubmit(async (c) => {
         const finalName = connName.trim();
         if (!finalName) return;
-        const conn = c as Connection;
         // Renaming an existing connection moves the entry (and its active /
         // personalization references) before we persist the edited fields.
         if (!name.startsWith("new-") && finalName !== name) {
           await onRename(name, finalName);
         }
-        await onSave(finalName, conn);
+        await onSave(finalName, c);
       })}
     >
       <div className="flex-1 space-y-1 overflow-auto p-4">

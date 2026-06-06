@@ -152,8 +152,14 @@ pub async fn test_connection(connection: Connection, detect: bool) -> AppResult<
 
 #[tauri::command]
 pub async fn list_models(connection: Connection, detect: bool) -> AppResult<Vec<String>> {
+    // Best-effort enrichment: the UI falls back to the curated model list on
+    // failure, so a detect failure yields an empty list rather than an error
+    // (mirrors test_connection's graceful detect handling).
     let driver = if detect {
-        detect_format(&connection.base_url, &connection.api_key).await?
+        match detect_format(&connection.base_url, &connection.api_key).await {
+            Ok(d) => d,
+            Err(_) => return Ok(Vec::new()),
+        }
     } else {
         connection.driver
     };
