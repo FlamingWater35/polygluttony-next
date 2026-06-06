@@ -128,6 +128,7 @@ export function TranslatePage() {
   const canStart = !running && selected.length > 0 && hasUsableConnection;
 
   const handleStart = () => {
+    setExpanded(new Set());
     useTranslationRun.getState().start(selected);
     ipc.startTranslation({
       folder: workdir,
@@ -288,8 +289,20 @@ export function TranslatePage() {
                   return (
                     <Fragment key={file.name}>
                       <tr
-                        className={`border-b border-border last:border-0 hover:bg-[color:var(--bg-hover)]${expandable ? " cursor-pointer" : ""}`}
+                        className={`border-b border-border last:border-0 hover:bg-[color:var(--color-bg-hover)]${expandable ? " cursor-pointer" : ""}`}
                         onClick={expandable ? () => toggleExpand(file.name) : undefined}
+                        role={expandable ? "button" : undefined}
+                        tabIndex={expandable ? 0 : undefined}
+                        onKeyDown={
+                          expandable
+                            ? (e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  toggleExpand(file.name);
+                                }
+                              }
+                            : undefined
+                        }
                       >
                         <td className="px-4 py-2.5 text-[12.5px] font-mono truncate max-w-0 w-[26%]">
                           <span className="truncate block">
