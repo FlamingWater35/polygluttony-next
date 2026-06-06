@@ -27,7 +27,7 @@ use crate::glossary::diff::GlossaryDiff;
 use crate::glossary::io::{load_folder_glossary, save_folder_glossary};
 use crate::glossary::model::Glossary;
 use crate::glossary::{normalize, personalize, prompts, reference};
-use crate::llm::error::LlmError;
+use crate::llm::error::{LlmError, CANCELLED_MSG};
 use crate::llm::service::LlmService;
 use crate::llm::LlmRequest;
 use crate::models::language_pair::LanguagePair;
@@ -82,7 +82,7 @@ pub(crate) fn merged_with_existing(existing: Option<&Glossary>, new_terms: &Glos
 /// After abort/cancel, batches still queued in the service fail with this
 /// transport error — consequences of the stop, not causes worth recording.
 fn is_cancel_noise(e: &LlmError) -> bool {
-    matches!(e, LlmError::Transport(msg) if msg == "run cancelled")
+    matches!(e, LlmError::Transport(msg) if msg == CANCELLED_MSG)
 }
 
 async fn phase(tx: &mpsc::Sender<GlossaryEvent>, p: GlossaryPhase, detail: Option<String>) {
@@ -174,6 +174,9 @@ pub async fn build_glossary(
     // (drop-cancellation, no 'static bound, no panic arm) with results yielded
     // IN BATCH ORDER as they complete — so the incremental merge+save keeps
     // flowing DURING the run instead of all landing at the end (crash safety).
+    // Trade-off: strictly-in-order yielding means a slow batch 1 head-of-line-
+    // blocks progress/saves of later batches that already completed —
+    // deterministic merges were chosen over completion-order progress.
     // The LlmService bounds the actual parallelism via its permits.
     let mut futs: FuturesOrdered<_> = batches
         .iter()
@@ -186,6 +189,7 @@ pub async fn build_glossary(
         })
         .collect();
 
+    let glossary_path = job.folder.join("glossary.json");
     let mut new_terms = Glossary::new(&job.world_type);
     let mut errors: Vec<String> = Vec::new();
     let mut terms_extracted = 0u32;
@@ -222,7 +226,15 @@ pub async fn build_glossary(
                 let snapshot = merged_with_existing(existing.as_ref(), &new_terms);
                 if !snapshot.is_empty() {
                     if let Err(e) = save_folder_glossary(&job.folder, &snapshot) {
-                        log(&tx, LogLevel::Warning, format!("incremental save failed: {e}")).await;
+                        log(
+                            &tx,
+                            LogLevel::Warning,
+                            format!(
+                                "incremental save of {} failed: {e}",
+                                glossary_path.display()
+                            ),
+                        )
+                        .await;
                     }
                 }
                 log(&tx, LogLevel::Info, format!("batch {n}/{total}: {count} terms")).await;
@@ -233,6 +245,12 @@ pub async fn build_glossary(
                 // and saved below (hard requirement: partial > none).
                 aborted = true;
                 job.cancel.cancel();
+                log(
+                    &tx,
+                    LogLevel::Warning,
+                    format!("batch {n}/{total}: auth error — stopping remaining batches"),
+                )
+                .await;
                 errors.push(format!(
                     "batch {n}/{total}: auth error, remaining batches stopped ({e})"
                 ));
@@ -240,6 +258,7 @@ pub async fn build_glossary(
             Err(e) => {
                 let noise = (aborted || job.cancel.is_cancelled()) && is_cancel_noise(&e);
                 if !noise {
+                    log(&tx, LogLevel::Warning, format!("batch {n}/{total} failed: {e}")).await;
                     errors.push(format!("batch {n}/{total} failed: {e}"));
                 }
             }
@@ -247,12 +266,15 @@ pub async fn build_glossary(
         let _ = tx.send(GlossaryEvent::Progress { done: n, total }).await;
     }
 
-    let cancelled = job.cancel.is_cancelled() && !aborted;
     new_terms.deduplicate();
+
+    // A user cancel can land at ANY point after the extraction loop too, so
+    // every gate below reads the token FRESH instead of a value latched at
+    // loop exit (which would misreport a mid-normalize/personalize cancel).
 
     // ── Normalizing: NEW terms only, before the merge (build step 6) ────────
     let mut normalized = false;
-    if job.normalize && !aborted && !cancelled && !new_terms.is_empty() {
+    if job.normalize && !aborted && !job.cancel.is_cancelled() && !new_terms.is_empty() {
         phase(
             &tx,
             GlossaryPhase::Normalizing,
@@ -260,7 +282,11 @@ pub async fn build_glossary(
         )
         .await;
         new_terms = normalize::normalize_pass(svc, &new_terms, &tx).await;
-        normalized = true;
+        // A cancel mid-normalize reports normalized=false even though some
+        // categories may already have been normalized (each keeps its original
+        // terms on failure, so the data is valid either way) — conservative
+        // reporting beats claiming a full pass.
+        normalized = !job.cancel.is_cancelled();
     }
 
     // ── Merge: existing terms win (build step 7) ────────────────────────────
@@ -268,7 +294,7 @@ pub async fn build_glossary(
 
     // ── Personalizing: one call on the web-capable connection (step 8) ──────
     let mut personalized = false;
-    if job.personalize && !aborted && !cancelled && !result.is_empty() {
+    if job.personalize && !aborted && !job.cancel.is_cancelled() && !result.is_empty() {
         if let Some(p_svc) = personalize_svc {
             phase(&tx, GlossaryPhase::Personalizing, None).await;
             match personalize::personalize_pass(p_svc, &result, &job.personalize_context).await {
@@ -276,6 +302,10 @@ pub async fn build_glossary(
                     result = g;
                     personalized = true;
                 }
+                // A failure caused by a cancel landing mid-call is a
+                // consequence of the stop, not a cause — suppress it
+                // (`aborted` is always false here: the gate excludes it).
+                Err(_) if job.cancel.is_cancelled() => {}
                 Err(reason) => errors.push(reason),
             }
         }
@@ -288,12 +318,17 @@ pub async fn build_glossary(
             // The ONLY Error event in the build. The last incremental save
             // remains on disk.
             let _ = tx
-                .send(GlossaryEvent::Error { message: format!("could not save glossary: {e}") })
+                .send(GlossaryEvent::Error {
+                    message: format!("could not save {}: {e}", glossary_path.display()),
+                })
                 .await;
             return;
         }
     }
 
+    // Recompute NOW, not at extraction-loop exit: a cancel that arrived during
+    // normalize/personalize must still be reported as a cancel.
+    let cancelled = job.cancel.is_cancelled() && !aborted;
     let summary = GlossaryBuildSummary {
         world_type: job.world_type,
         files_processed,
@@ -489,6 +524,86 @@ mod tests {
         assert_eq!(saved.characters.get("应欢欢").unwrap(), "Ying Huanhuan"); // existing preserved
         assert_eq!(saved.characters.get("林动").unwrap(), "Lin Dong"); // partial kept
         assert_eq!(s.diff.total_added, 1); // diff vs pre-build state
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn auth_abort_suppresses_queued_cancel_noise() {
+        let dir = tempfile::tempdir().unwrap();
+        write_ass(dir.path(), "e1.ass", &["一", "二", "三"]); // limit 2 → 3 batches
+        let cancel = CancellationToken::new();
+        // Only ONE batch ever reaches the driver (cap 1 + FuturesOrdered): its
+        // auth error trips the cancel token, so the two queued batches fail
+        // inside the service with CANCELLED_MSG without consuming script
+        // entries — and that noise must NOT appear in summary.errors.
+        let d = ScriptedDriver::new(vec![Err(LlmError::Http {
+            status: 401,
+            body: "bad key".into(),
+        })]);
+        let svc = svc1(d, cancel.clone());
+        let (_events, s) =
+            run_and_collect(job(dir.path(), vec!["e1.ass".into()], cancel), &svc, None).await;
+
+        assert!(s.aborted);
+        assert_eq!(s.batches_processed, 0);
+        assert_eq!(s.batches_total, 3);
+        assert_eq!(s.errors.len(), 1, "queued-batch noise suppressed: {:?}", s.errors);
+        assert!(s.errors[0].contains("auth error"), "{}", s.errors[0]);
+    }
+
+    /// The ONLY `Error` event in the build: the final save fails. Unix-only —
+    /// a read+exec (0o555) folder makes every write fail: incremental saves
+    /// degrade to warnings, the final save emits `Error`, and no `Done` follows.
+    #[cfg(unix)]
+    #[tokio::test(start_paused = true)]
+    async fn final_save_failure_emits_error_and_no_done() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        write_ass(dir.path(), "e1.ass", &["一"]); // 1 line → 1 batch
+        let cancel = CancellationToken::new();
+        let d = ScriptedDriver::new(vec![Ok(r#"{"characters":{"林动":"Lin Dong"}}"#.into())]);
+        let svc = svc1(d, cancel.clone());
+
+        // Strip write permission AFTER writing the .ass so all saves fail.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(256);
+        build_glossary(job(dir.path(), vec!["e1.ass".into()], cancel), &svc, None, tx).await;
+
+        // Restore BEFORE asserting so the tempdir can clean itself up.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut events = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            events.push(ev);
+        }
+        let error_msgs: Vec<&String> = events
+            .iter()
+            .filter_map(|e| match e {
+                GlossaryEvent::Error { message } => Some(message),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(error_msgs.len(), 1, "exactly one Error event: {events:?}");
+        assert!(error_msgs[0].contains("could not save"), "{}", error_msgs[0]);
+        assert!(
+            error_msgs[0].contains("glossary.json"),
+            "Error names the path: {}",
+            error_msgs[0]
+        );
+        assert!(
+            !events.iter().any(|e| matches!(e, GlossaryEvent::Done { .. })),
+            "no Done after a final-save Error"
+        );
+        // The incremental save degraded to a path-bearing warning on the way.
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                GlossaryEvent::Log { level: crate::events::LogLevel::Warning, message }
+                    if message.contains("incremental save") && message.contains("glossary.json")
+            )),
+            "incremental-save warning expected: {events:?}"
+        );
     }
 
     #[tokio::test(start_paused = true)]
