@@ -92,7 +92,7 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     let pair = LanguagePair::from_codes(&args.source_lang, &args.target_lang)?;
     // Resolve prompt templates ONCE — a running job is immune to mid-job edits;
     // changes apply to the next run. An unreadable override fails loudly here.
-    let prompts = std::sync::Arc::new(crate::prompts::TranslationPrompts::resolve(
+    let prompts = Arc::new(crate::prompts::TranslationPrompts::resolve(
         &crate::prompts::overrides_dir(&app)?,
         &pair,
         args.tone,

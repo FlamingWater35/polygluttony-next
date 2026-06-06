@@ -279,6 +279,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn custom_template_reaches_the_request() {
+        let driver = ScriptedDriver::new(vec![Ok(
+            r#"[{"id":1,"tgt":"<0001:D> Hello"}]"#.to_string(),
+        )]);
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        let svc = LlmService::new(driver.clone(), 2, CancellationToken::new(), tx);
+        let settings = BatchSettings {
+            pair: LanguagePair::from_codes("zh", "en").unwrap(),
+            template: "XCUSTOMX {GLOSSARY} {TONE}".into(),
+            tone_text: "XTONEX".into(),
+        };
+        let _ = translate_batch(&svc, &lines(&[(1, "你好")]), &Glossary::default(), &[], &settings).await;
+        let req = driver.last_request().expect("a request was sent");
+        assert!(req.system.starts_with("XCUSTOMX"), "system starts with XCUSTOMX: {:?}", req.system);
+        assert!(req.system.contains("XTONEX"), "system contains XTONEX: {:?}", req.system);
+    }
+
+    #[tokio::test]
     async fn tagged_partial_reapplies_tags_to_salvaged_prefix() {
         // id 2 missing from response → Partial; id 1's tag must still be reapplied.
         let svc = service(vec![r#"[{"id":1,"tgt":"<0001:D> Hello"}]"#]);

@@ -140,10 +140,8 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
         }
         st.state(FileStateKind::Verifying, None).await;
         let stripped = st.stripped_pairs();
-        let report =
-            match verify_file(job.svc, &stripped, &job.glossary.all_terms(), &job.prompts.verify)
-                .await
-            {
+        let report = verify_file(job.svc, &stripped, &job.glossary.all_terms(), &job.prompts.verify).await;
+        let report = match report {
             Ok(r) => r,
             Err(e) => {
                 // Dead key mid-verify: fail the file and doom the run, mirroring

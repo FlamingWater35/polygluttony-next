@@ -10,10 +10,10 @@
 use crate::glossary::model::Glossary;
 use crate::models::language_pair::LanguagePair;
 
-/// Fill all known placeholders in `template`. Each template uses its own
-/// placeholder names (see module doc); we apply all substitutions and any that
-/// don't appear are no-ops. Both UPPERCASE and lowercase forms are filled —
-/// validation is case-tolerant, so the engine must be too.
+/// Fill all known placeholders in `template` via single-pass, case-insensitive
+/// substitution (see `crate::prompts::fill`) — inserted values are never
+/// re-scanned, and any case variant of a token fills, matching the validator's
+/// case tolerance. Tokens a template doesn't use are simply absent.
 pub fn system_prompt(
     template: &str,
     pair: &LanguagePair,
@@ -21,17 +21,16 @@ pub fn system_prompt(
     tone_text: &str,
 ) -> String {
     let glossary_str = glossary.to_formatted_string();
-    template
-        .replace("{GLOSSARY}", &glossary_str)
-        .replace("{glossary}", &glossary_str)
-        .replace("{TONE}", tone_text)
-        .replace("{tone}", tone_text)
-        .replace("{source_language}", &pair.source_name)
-        .replace("{SOURCE_LANGUAGE}", &pair.source_name)
-        .replace("{target_language}", &pair.target_name)
-        .replace("{TARGET_LANGUAGE}", &pair.target_name)
-        .replace("{localization_style}", tone_text)
-        .replace("{LOCALIZATION_STYLE}", tone_text)
+    crate::prompts::fill(
+        template,
+        &[
+            ("glossary", glossary_str.as_str()),
+            ("tone", tone_text),
+            ("source_language", &pair.source_name),
+            ("target_language", &pair.target_name),
+            ("localization_style", tone_text),
+        ],
+    )
 }
 
 /// Build the user prompt. `lines` are (id, marked+hinted src). `context` is

@@ -344,6 +344,42 @@ it in Settings",
     }
 }
 
+// ---- single-pass placeholder substitution ----------------------------------
+
+/// Single-pass placeholder substitution. Scans `template` for `{token}`
+/// patterns (ASCII letters/underscore), looks the token name up
+/// case-insensitively in `values` (keys must be lowercase), and inserts the
+/// value VERBATIM — inserted values are never re-scanned, so a glossary line
+/// containing "{tone}" can't trigger a second substitution. Unknown tokens
+/// (e.g. `{established_terms}`) are left intact for the caller to handle.
+pub fn fill(template: &str, values: &[(&str, &str)]) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start..]; // starts at '{'
+        if let Some(end) = after.find('}') {
+            let inner = &after[1..end];
+            if !inner.is_empty() && inner.chars().all(|c| c.is_ascii_alphabetic() || c == '_') {
+                let key = inner.to_ascii_lowercase();
+                if let Some((_, v)) = values.iter().find(|(k, _)| *k == key) {
+                    out.push_str(v);
+                    rest = &after[end + 1..];
+                    continue;
+                }
+            }
+            // Not a known token: emit the '{' literally and keep scanning after it.
+            out.push('{');
+            rest = &after[1..];
+        } else {
+            out.push_str(after);
+            rest = "";
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 // ---- validation -------------------------------------------------------------
 
 /// Placeholder matching is case-tolerant: the engine fills both `{WORLD_TYPE}`
@@ -561,6 +597,19 @@ mod tests {
         validate(PromptId::GlossaryExtract, "extract terms for {world_type}").unwrap();
         // Token-less prompts only require non-empty text.
         validate(PromptId::Verify, "check the lines").unwrap();
+    }
+
+    #[test]
+    fn fill_is_single_pass_case_insensitive_and_leaves_unknown_tokens() {
+        // Any case variant of a known token fills.
+        let r = fill("{GLOSSARY}|{Tone}|{tone}", &[("glossary", "G"), ("tone", "T")]);
+        assert_eq!(r, "G|T|T");
+        // Inserted values are never re-scanned.
+        let r = fill("{glossary} {tone}", &[("glossary", "has {tone} inside"), ("tone", "T")]);
+        assert_eq!(r, "has {tone} inside T");
+        // Unknown tokens and non-tokens stay intact.
+        let r = fill("{established_terms} {} {123} x", &[("tone", "T")]);
+        assert_eq!(r, "{established_terms} {} {123} x");
     }
 
     #[test]
