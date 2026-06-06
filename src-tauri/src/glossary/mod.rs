@@ -11,9 +11,11 @@
 //! - `diff`    — pure diff between two glossary snapshots (`GlossaryDiff`)
 //! - `world_detector` — keyword-heuristic world-type detection (no LLM)
 //! - `reference` — reference terminology types, cache, ref/ discovery (O11 pure half)
+//! - `prompts` — prompt assembly for extraction, normalize, and personalize passes
 
 pub mod diff;
 pub mod io;
 pub mod model;
+pub mod prompts;
 pub mod reference;
 pub mod world_detector;
