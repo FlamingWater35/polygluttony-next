@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { ipc } from "@/lib/ipc";
+import { useAppStore } from "@/stores/app-store";
 import { useGlossaryRun } from "@/stores/glossary-store";
 
 // ── reference query keys (shared by create card, review screen, editor) ───────
@@ -35,6 +36,8 @@ export function useImportReference(folder: string) {
       const summary = await ipc.importReferenceFiles(folder, fileList);
       await qc.invalidateQueries({ queryKey: referenceStatusKey(folder) });
       await qc.invalidateQueries({ queryKey: referenceKey(folder) });
+      // User switched folders mid-import — don't open another folder's review over this one.
+      if (useAppStore.getState().workdir !== folder) return;
       // Land on the review — it shows counts, errors, and cancellation.
       useGlossaryRun.getState().openReview(folder, summary);
     } catch (e: unknown) {

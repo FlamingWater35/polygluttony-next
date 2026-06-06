@@ -51,6 +51,11 @@ export function ReferenceReview({ view }: { view: ProjectView }) {
     return (
       <div className="flex h-full flex-col">
         <div className="flex-1">
+          {lastImport?.cancelled ? (
+            <div className="mx-5 mt-5 rounded-md border border-[color:var(--color-alert)]/40 bg-[color:var(--color-alert)]/10 px-4 py-2 text-[12px] text-[color:var(--color-alert)]">
+              Import cancelled — no terms were extracted before the stop.
+            </div>
+          ) : null}
           <EmptyState
             title="Reference terms"
             description="No reference terms yet — import .ass files you've already translated well; their wording guides the glossary."

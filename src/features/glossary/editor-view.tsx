@@ -235,7 +235,7 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
                 <ArrowsDownUp className="size-4" /> View changes
               </Button>
             ) : null}
-            <Button size="sm" variant="secondary" onClick={() => openReview(view.folder)}>
+            <Button size="sm" variant="secondary" onClick={() => openReview(view.folder)} disabled={busy !== null}>
               <Books className="size-4" />
               Reference terms{refCount ? ` (${refCount})` : ""}
             </Button>
