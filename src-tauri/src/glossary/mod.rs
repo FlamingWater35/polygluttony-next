@@ -10,9 +10,11 @@
 //! - `io`      — atomic pretty-printed save + load for the glossary JSON file
 //! - `diff`    — pure diff between two glossary snapshots (`GlossaryDiff`)
 //! - `world_detector` — keyword-heuristic world-type detection (no LLM)
-//! - `reference` — reference terminology types, cache, ref/ discovery (O11 pure half)
+//! - `reference` — reference terminology types, cache, ref/ discovery, async extractor (O11)
 //! - `prompts` — prompt assembly for extraction, normalize, and personalize passes
+//! - `build`   — cross-file batch helper (`glossary_batches`) shared with O10 orchestrator
 
+pub mod build;
 pub mod diff;
 pub mod io;
 pub mod model;

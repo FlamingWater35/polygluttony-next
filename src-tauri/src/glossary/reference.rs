@@ -1,7 +1,7 @@
 //! Reference terminology (O11): English terms lifted from already-translated
 //! `.ass` files, injected into the extraction prompt for consistency. Ports
-//! `glossary/reference_terminology.py` + `reference_loader.py`. The async
-//! LLM extractor lives in this module too (added in a later task).
+//! `glossary/reference_terminology.py` + `reference_loader.py` + the async LLM
+//! extractor (`reference_extractor.py`).
 //!
 //! ## Cache-placement deviation from Python
 //! Python (`reference_loader.py:63`) stores the cache at `ref_dir.parent()` —
@@ -12,11 +12,19 @@
 //! share a single cache file.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use tokio::sync::mpsc;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::ass::{decode::decode_file, parse::parse_dialogues, tags::strip_for_text};
 use crate::error::AppResult;
+use crate::events::{GlossaryEvent, LogLevel};
+use crate::llm::service::LlmService;
+use crate::llm::LlmRequest;
+use crate::translation::parse_response;
 
 // consumed by the async LLM extractor and O11 command (later step-4 tasks)
 #[allow(dead_code)]
@@ -234,6 +242,157 @@ pub fn reference_status(folder: &Path) -> ReferenceStatus {
     ReferenceStatus { source: ReferenceSource::None, count: 0 }
 }
 
+/// Result of an explicit Import (O11 picker path).
+// consumed by the O11 command (later step-4 task)
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct ReferenceSummary {
+    pub count: u32,
+    pub files_processed: u32,
+    pub errors: Vec<String>,
+}
+
+/// Dialogue lines from reference `.ass` files; unparseable files are skipped
+/// (`reference_extractor.py:100-122`).
+// consumed by extract_from_files below (which is #[allow(dead_code)] until
+// the O11 command arrives in the next task)
+#[allow(dead_code)]
+fn collect_dialogue_lines(files: &[PathBuf]) -> (Vec<String>, u32) {
+    let mut lines = Vec::new();
+    let mut ok = 0u32;
+    for f in files {
+        let Ok(text) = decode_file(f) else { continue };
+        let dialogues = parse_dialogues(&text);
+        if dialogues.is_empty() {
+            continue;
+        }
+        ok += 1;
+        lines.extend(dialogues.iter().map(|d| strip_for_text(&d.text)));
+    }
+    (lines, ok)
+}
+
+/// Extract English reference terms from `.ass` files: batch at `limit × 0.7`
+/// lines, parallel via `LlmService` (its retries/AIMD replace Python's
+/// BatchManager), merge sorted by batch index, dedupe. Batch failures are
+/// recorded and skipped — NEVER fatal. Returns (terms, files_processed, errors).
+// consumed by the O11 command (later step-4 task) and load_or_extract below
+#[allow(dead_code)]
+pub async fn extract_from_files(
+    svc: &Arc<LlmService>,
+    files: &[PathBuf],
+    batch_limit: Option<u32>,
+    tx: &mpsc::Sender<GlossaryEvent>,
+) -> (ReferenceTerminology, u32, Vec<String>) {
+    let (lines, files_ok) = collect_dialogue_lines(files);
+    if lines.is_empty() {
+        return (
+            ReferenceTerminology::default(),
+            files_ok,
+            vec!["no dialogue text in reference files".into()],
+        );
+    }
+    let batches = crate::glossary::build::glossary_batches(&lines, batch_limit);
+    let total = batches.len() as u32;
+    let _ = tx.send(GlossaryEvent::Progress { done: 0, total }).await;
+
+    let mut handles = Vec::new();
+    for batch in batches {
+        let svc = svc.clone();
+        let req = LlmRequest {
+            system: crate::glossary::prompts::REFERENCE_EXTRACT.to_string(),
+            user: crate::glossary::prompts::extraction_user_prompt(&batch),
+        };
+        handles.push(tokio::spawn(async move { svc.request(req).await }));
+    }
+
+    let mut merged = ReferenceTerminology::default();
+    let mut errors = Vec::new();
+    // Awaiting join handles in spawn order = deterministic merge order
+    // (reference_extractor.py:86 sorts by batch index); execution still runs
+    // concurrently under the service's permit limit.
+    for (i, h) in handles.into_iter().enumerate() {
+        let done = (i + 1) as u32;
+        match h.await {
+            Ok(Ok(resp)) => match parse_response::extract_object(&resp.text) {
+                Ok(v) => merged.merge(&ReferenceTerminology::from_value(&v)),
+                Err(e) => {
+                    let _ = tx
+                        .send(GlossaryEvent::Log {
+                            level: LogLevel::Warning,
+                            message: format!(
+                                "reference batch {done}: unparseable response ({e})"
+                            ),
+                        })
+                        .await;
+                }
+            },
+            Ok(Err(e)) => errors.push(format!("reference batch {done} failed: {e}")),
+            Err(_) => errors.push(format!("reference batch {done} task panicked")),
+        }
+        let _ = tx.send(GlossaryEvent::Progress { done, total }).await;
+    }
+    merged.deduplicate();
+    (merged, files_ok, errors)
+}
+
+/// O11 auto path (`glossary_phase.py:122-182`): cached file → use; else ref/
+/// dir with `.ass` files → extract + cache; else None.
+// consumed by the O11 command (later step-4 task)
+#[allow(dead_code)]
+pub async fn load_or_extract(
+    folder: &Path,
+    svc: &Arc<LlmService>,
+    batch_limit: Option<u32>,
+    tx: &mpsc::Sender<GlossaryEvent>,
+) -> Option<ReferenceTerminology> {
+    if let Some(t) = load_cache(folder) {
+        let _ = tx
+            .send(GlossaryEvent::Log {
+                level: LogLevel::Info,
+                message: format!(
+                    "loaded {} reference terms from {CACHE_FILENAME}",
+                    t.count()
+                ),
+            })
+            .await;
+        return Some(t);
+    }
+    let ref_dir = find_ref_dir(folder)?;
+    let files = ref_ass_files(&ref_dir);
+    if files.is_empty() {
+        return None;
+    }
+    let _ = tx
+        .send(GlossaryEvent::Log {
+            level: LogLevel::Info,
+            message: format!(
+                "extracting reference terminology from {} files in ref/",
+                files.len()
+            ),
+        })
+        .await;
+    let (t, _files_ok, errors) = extract_from_files(svc, &files, batch_limit, tx).await;
+    for e in errors {
+        let _ = tx
+            .send(GlossaryEvent::Log { level: LogLevel::Warning, message: e })
+            .await;
+    }
+    if t.count() > 0 {
+        if let Err(e) = save_cache(folder, &t) {
+            let _ = tx
+                .send(GlossaryEvent::Log {
+                    level: LogLevel::Warning,
+                    message: format!("could not cache reference terms: {e}"),
+                })
+                .await;
+        }
+        return Some(t);
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,5 +513,119 @@ mod tests {
         let s = reference_status(dir.path());
         assert_eq!(s.source, ReferenceSource::Cached);
         assert_eq!(s.count, 2); // term count
+    }
+
+    // ── Async extractor tests ────────────────────────────────────────────────
+
+    use crate::events::GlossaryEvent;
+    use crate::llm::service::LlmService;
+    use crate::llm::test_support::ScriptedDriver;
+    use std::sync::Arc;
+    use tokio_util::sync::CancellationToken;
+
+    fn svc(driver: Arc<ScriptedDriver>) -> Arc<LlmService> {
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        Arc::new(LlmService::new(driver, 2, CancellationToken::new(), tx))
+    }
+
+    fn write_ass(dir: &Path, name: &str, lines: &[&str]) -> PathBuf {
+        let mut content = String::from(
+            "[Script Info]\nTitle: t\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n",
+        );
+        for (i, l) in lines.iter().enumerate() {
+            content.push_str(&format!(
+                "Dialogue: 0,0:00:0{i}.00,0:00:0{}.00,Default,,0,0,0,,{l}\n",
+                i + 1
+            ));
+        }
+        let p = dir.join(name);
+        std::fs::write(&p, content).unwrap();
+        p
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn extractor_merges_batches_and_dedupes() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = write_ass(dir.path(), "e1.ass", &["Lin Dong attacks", "The sect gathers"]);
+        let d = ScriptedDriver::new(vec![Ok(
+            r#"{"characters":["Lin Dong","lin dong"],"organizations":["Dao Sect"]}"#.into(),
+        )]);
+        let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
+        let (t, files_ok, errors) = extract_from_files(&svc(d), &[f], Some(300), &gtx).await;
+        assert!(errors.is_empty());
+        assert_eq!(files_ok, 1);
+        assert_eq!(t.characters, vec!["Lin Dong"]); // deduped case-insensitively
+        assert_eq!(t.organizations, vec!["Dao Sect"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn extractor_records_batch_failure_and_continues() {
+        let dir = tempfile::tempdir().unwrap();
+        // batch limit 2 → ×0.7 → 1 line per batch → 2 batches for 2 lines.
+        // 3 Transport errors are consumed by whichever batch runs first (it
+        // exhausts all 3 LlmService retry attempts). The Ok is consumed by the
+        // batch that runs second. Since spawned tasks may run in either order
+        // under the async runtime, we only assert: exactly 1 error, and the
+        // successful batch's data is present in the merged result.
+        let f = write_ass(dir.path(), "e1.ass", &["line one", "line two"]);
+        let d = ScriptedDriver::new(vec![
+            // One batch exhausts retries; the other succeeds.
+            Err(crate::llm::error::LlmError::Transport("x".into())),
+            Err(crate::llm::error::LlmError::Transport("x".into())),
+            Err(crate::llm::error::LlmError::Transport("x".into())),
+            Ok(r#"{"locations":["Qingyang Town"]}"#.into()),
+        ]);
+        let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
+        let svc = {
+            let (tx, _rx) = tokio::sync::mpsc::channel(64);
+            Arc::new(LlmService::new(d, 1, CancellationToken::new(), tx))
+        };
+        let (t, _files_ok, errors) = extract_from_files(&svc, &[f], Some(2), &gtx).await;
+        // Exactly one batch failed; which one depends on scheduler ordering.
+        assert_eq!(errors.len(), 1, "expected 1 error, got: {:?}", errors);
+        assert!(
+            errors[0].contains("batch 1") || errors[0].contains("batch 2"),
+            "error must name a batch: got {:?}",
+            errors[0]
+        );
+        assert_eq!(t.locations, vec!["Qingyang Town"]); // the successful batch landed
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn load_or_extract_prefers_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        // Struct literal, not field-reassign — clippy::field_reassign_with_default.
+        let cached = ReferenceTerminology {
+            items: vec!["Stone Talisman".into()],
+            ..Default::default()
+        };
+        save_cache(dir.path(), &cached).unwrap();
+        // Driver would panic if called (empty script) — cache short-circuits.
+        let d = ScriptedDriver::new(vec![]);
+        let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
+        let t = load_or_extract(dir.path(), &svc(d), Some(300), &gtx).await;
+        assert_eq!(t.unwrap().items, vec!["Stone Talisman"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn load_or_extract_extracts_from_ref_dir_and_caches() {
+        let dir = tempfile::tempdir().unwrap();
+        let ref_dir = dir.path().join("ref");
+        std::fs::create_dir(&ref_dir).unwrap();
+        write_ass(&ref_dir, "e1.ass", &["Lin Dong strikes"]);
+        let d = ScriptedDriver::new(vec![Ok(r#"{"characters":["Lin Dong"]}"#.into())]);
+        let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
+        let t = load_or_extract(dir.path(), &svc(d), Some(300), &gtx).await.unwrap();
+        assert_eq!(t.characters, vec!["Lin Dong"]);
+        // Cached for next time.
+        assert_eq!(load_cache(dir.path()).unwrap().characters, vec!["Lin Dong"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn load_or_extract_none_when_nothing_available() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = ScriptedDriver::new(vec![]);
+        let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
+        assert!(load_or_extract(dir.path(), &svc(d), Some(300), &gtx).await.is_none());
     }
 }
