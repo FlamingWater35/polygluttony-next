@@ -17,6 +17,8 @@ import type { ReferenceStatus } from "@/types/generated/ReferenceStatus";
 import type { ReferenceSummary } from "@/types/generated/ReferenceSummary";
 import type { ReferenceTerminology } from "@/types/generated/ReferenceTerminology";
 import type { WorldType } from "@/types/generated/WorldType";
+import type { PromptId } from "@/types/generated/PromptId";
+import type { PromptMeta } from "@/types/generated/PromptMeta";
 
 /**
  * Typed wrappers around the Rust core's Tauri commands. The webview never talks
@@ -118,6 +120,16 @@ export const ipc = {
   unwatchGlossary: () => invoke<void>("unwatch_glossary"),
   /** Web-capable personalization connection name, or null (checkbox gating). */
   personalizationStatus: () => invoke<string | null>("personalization_status"),
+  /** Settings — list all prompt templates with modified flags + placeholder specs. */
+  listPrompts: () => invoke<PromptMeta[]>("list_prompts"),
+  /** Settings — current effective text (override or embedded default). */
+  getPrompt: (id: PromptId) => invoke<string>("get_prompt", { id }),
+  /** Settings — validate + persist a custom prompt override. */
+  savePrompt: (id: PromptId, text: string) => invoke<void>("save_prompt", { id, text }),
+  /** Settings — delete the override; returns the embedded default text. */
+  resetPrompt: (id: PromptId) => invoke<string>("reset_prompt", { id }),
+  /** Settings — read a picked .txt file for "Load from file…" (≤1 MB, UTF-8). */
+  readPromptFile: (path: string) => invoke<string>("read_prompt_file", { path }),
 };
 
 /** Subscribe to a backend-emitted event (progress, logs, …). Returns an unlisten fn. */
