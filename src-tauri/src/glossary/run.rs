@@ -1,7 +1,7 @@
 //! Glossary run manager: one glossary op at a time (build / standalone
 //! normalize / import), mutually exclusive with translation runs. Mirrors
-//! `translation/run.rs` with a simpler forwarder (the slot is released by the
-//! op itself, not by channel close).
+//! `translation/run.rs` with a simpler forwarder (the slot is released by a
+//! `SlotGuard` held by the op, not by channel close).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -70,6 +70,27 @@ pub async fn claim_slot(app: &AppHandle, kind: GlossaryOpKind) -> AppResult<Canc
 pub async fn release_slot(app: &AppHandle) {
     if let Some(state) = app.try_state::<GlossaryRunState>() {
         *state.0.lock().await = None;
+    }
+}
+
+/// RAII slot release: dropping the guard releases the glossary-op slot even if
+/// the op panics (mirrors translation's Drop-driven release via channel close).
+pub struct SlotGuard {
+    app: AppHandle,
+}
+
+impl SlotGuard {
+    pub fn new(app: AppHandle) -> Self {
+        SlotGuard { app }
+    }
+}
+
+impl Drop for SlotGuard {
+    fn drop(&mut self) {
+        let app = self.app.clone();
+        tauri::async_runtime::spawn(async move {
+            release_slot(&app).await;
+        });
     }
 }
 
@@ -170,13 +191,17 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     };
     let app_for_release = app.clone();
     tauri::async_runtime::spawn(async move {
+        // RAII slot release — survives a panic in build_glossary. Declared
+        // FIRST so it drops LAST (locals drop in reverse declaration order):
+        // the LlmService handles below must drop before the slot is released
+        // so their internal log-adapter senders close before a new op can
+        // claim the channel.
+        let _guard = SlotGuard::new(app_for_release);
         build_glossary(job, &svc, personalize_svc.as_ref(), tx).await;
-        // Drop LlmService handles before releasing the slot so their internal
-        // log-adapter senders close before a new op can claim the channel.
         drop(svc);
         drop(personalize_svc);
-        // tx dropped by build_glossary's end of scope → forwarder drains & exits.
-        release_slot(&app_for_release).await;
+        // tx consumed by build_glossary → forwarder drains & exits; then
+        // _guard drops here, releasing the slot.
     });
     Ok(())
 }

@@ -1,6 +1,6 @@
 //! Glossary commands (O9–O15). Thin wrappers — the engine lives in `glossary::*`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
@@ -66,6 +66,11 @@ pub async fn cancel_glossary_build(app: AppHandle) -> AppResult<()> {
 
 /// O12 — returns the review WITHOUT saving; the UI saves on accept via
 /// `save_glossary`. Claims the op slot (exclusive with build/translation).
+///
+/// Cancel semantics (for the UI task): a user cancel mid-normalize makes the
+/// in-flight category requests fail, so the originals are kept and this
+/// command still resolves Ok with a no-changes review — the UI must discard
+/// the resolved review after a user-cancel instead of presenting it.
 #[tauri::command]
 pub async fn normalize_glossary(app: AppHandle, folder: String) -> AppResult<NormalizeReview> {
     let dir = PathBuf::from(&folder);
@@ -78,20 +83,17 @@ pub async fn normalize_glossary(app: AppHandle, folder: String) -> AppResult<Nor
     let conn =
         crate::translation::run::usable_connection(&cfg).ok_or(AppError::NoActiveConnection)?;
     let cancel = run::claim_slot(&app, GlossaryOpKind::Normalize).await?;
-    // Slot released on every path below (the async block catches early returns).
-    let result = async {
-        let (tx, rx) = tokio::sync::mpsc::channel(256);
-        run::spawn_forwarder(app.clone(), rx);
-        let svc = run::service_for(&conn, cancel.clone(), tx.clone());
-        let normalized = normalize_pass(&svc, &original, &tx).await;
-        Ok(NormalizeReview {
-            diff: GlossaryDiff::compute(Some(&original), &normalized),
-            normalized: GlossaryDoc::from(&normalized),
-        })
-    }
-    .await;
-    run::release_slot(&app).await;
-    result
+    // RAII: the guard releases the slot on every exit path, including panics.
+    // Declared before svc/tx so it drops last (after their senders close).
+    let _guard = run::SlotGuard::new(app.clone());
+    let (tx, rx) = tokio::sync::mpsc::channel(256);
+    run::spawn_forwarder(app.clone(), rx);
+    let svc = run::service_for(&conn, cancel.clone(), tx.clone());
+    let normalized = normalize_pass(&svc, &original, &tx).await;
+    Ok(NormalizeReview {
+        diff: GlossaryDiff::compute(Some(&original), &normalized),
+        normalized: GlossaryDoc::from(&normalized),
+    })
 }
 
 /// O11 — extract reference terms from user-picked translated `.ass` files and
@@ -103,29 +105,27 @@ pub async fn import_reference_files(
     paths: Vec<String>,
 ) -> AppResult<ReferenceSummary> {
     if paths.is_empty() {
-        return Err(AppError::Other("no files chosen".into()));
+        return Err(AppError::Other("no files selected".into()));
     }
     let dir = PathBuf::from(&folder);
     let cfg = config_store::load(&app)?;
     let conn =
         crate::translation::run::usable_connection(&cfg).ok_or(AppError::NoActiveConnection)?;
     let cancel = run::claim_slot(&app, GlossaryOpKind::Import).await?;
-    let result = async {
-        let (tx, rx) = tokio::sync::mpsc::channel(256);
-        run::spawn_forwarder(app.clone(), rx);
-        let svc = run::service_for(&conn, cancel.clone(), tx.clone());
-        let files: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-        let (terms, files_processed, errors) =
-            reference::extract_from_files(&svc, &files, conn.batch_dialogue_limit, &tx).await;
-        let count = terms.count() as u32;
-        if count > 0 {
-            reference::save_cache(&dir, &terms)?;
-        }
-        Ok(ReferenceSummary { count, files_processed, errors })
+    // RAII: the guard releases the slot on every exit path, including panics.
+    // Declared before svc/tx so it drops last (after their senders close).
+    let _guard = run::SlotGuard::new(app.clone());
+    let (tx, rx) = tokio::sync::mpsc::channel(256);
+    run::spawn_forwarder(app.clone(), rx);
+    let svc = run::service_for(&conn, cancel.clone(), tx.clone());
+    let files: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+    let (terms, files_processed, errors) =
+        reference::extract_from_files(&svc, &files, conn.batch_dialogue_limit, &tx).await;
+    let count = terms.count() as u32;
+    if count > 0 {
+        reference::save_cache(&dir, &terms)?;
     }
-    .await;
-    run::release_slot(&app).await;
-    result
+    Ok(ReferenceSummary { count, files_processed, errors })
 }
 
 #[tauri::command]
@@ -145,6 +145,14 @@ pub fn export_glossary(folder: String, dest: String) -> AppResult<()> {
     if !src.is_file() {
         return Err(AppError::Other("no glossary.json to export".into()));
     }
+    // fs::copy truncates dest before reading, so dest == src would zero the
+    // glossary. canonicalize fails for a non-existent dest — fine: a
+    // non-existent dest can't be src.
+    if let (Ok(d), Ok(s)) = (Path::new(&dest).canonicalize(), src.canonicalize()) {
+        if d == s {
+            return Err(AppError::Other("export destination is the glossary itself".into()));
+        }
+    }
     std::fs::copy(src, dest)?;
     Ok(())
 }
@@ -158,7 +166,7 @@ pub fn open_glossary_editor(app: AppHandle, folder: String) -> AppResult<()> {
         return Err(AppError::Other("no glossary.json yet".into()));
     }
     app.opener()
-        .open_path(path.display().to_string(), None::<String>)
+        .open_path(path.to_string_lossy().into_owned(), None::<String>)
         .map_err(|e| AppError::Other(e.to_string()))
 }
 

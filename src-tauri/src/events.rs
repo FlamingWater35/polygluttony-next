@@ -117,8 +117,6 @@ pub enum RunEvent {
 }
 
 /// Channel for all step-4 glossary events.
-// consumed by commands/glossary (later step-4 task)
-#[allow(dead_code)]
 pub const GLOSSARY_EVENT: &str = "glossary://event";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -136,8 +134,6 @@ pub enum GlossaryPhase {
 /// Terminal payload of a glossary build. `aborted` = mid-build fatal (auth)
 /// — partial results were still merged and saved; `cancelled` = user cancel,
 /// same partial-save semantics. Partial > none (hard requirement).
-// consumed by commands/glossary (later step-4 task)
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/types/generated/")]
 pub struct GlossaryBuildSummary {
@@ -159,8 +155,6 @@ pub struct GlossaryBuildSummary {
 /// Everything the UI hears on `GLOSSARY_EVENT`. `Error` is terminal-without-
 /// result (e.g. final save IO failure); pre-flight failures surface as command
 /// errors, not events. `FileChanged` comes from the O15 watcher.
-// consumed by commands/glossary (later step-4 task)
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[ts(export, export_to = "../../src/types/generated/")]
