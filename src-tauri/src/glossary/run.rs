@@ -170,7 +170,10 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     let (tx, rx) = mpsc::channel::<GlossaryEvent>(512);
     spawn_forwarder(app.clone(), rx);
 
-    let svc = service_for(&conn, cancel.clone(), tx.clone());
+    // Stage clones: extraction runs on the glossary budget, normalization on
+    // its own dedicated budget (spec: three explicit per-stage budgets).
+    let svc = service_for(&conn.for_glossary(), cancel.clone(), tx.clone());
+    let norm_svc = service_for(&conn.for_glossary_norm(), cancel.clone(), tx.clone());
     // Personalization service only when requested AND a web-capable
     // personalization connection exists (cap 1 — single call). MUST share the
     // build's cancel token so cancel can interrupt a long web-search call.
@@ -203,8 +206,9 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
         // so their internal log-adapter senders close before a new op can
         // claim the channel.
         let _guard = SlotGuard::new(app_for_release);
-        build_glossary(job, &svc, personalize_svc.as_ref(), tx).await;
+        build_glossary(job, &svc, &norm_svc, personalize_svc.as_ref(), tx).await;
         drop(svc);
+        drop(norm_svc);
         drop(personalize_svc);
         // tx consumed by build_glossary → forwarder drains & exits; then
         // _guard drops here, releasing the slot.

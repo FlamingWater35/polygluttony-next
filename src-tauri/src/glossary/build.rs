@@ -86,6 +86,7 @@ async fn log(tx: &mpsc::Sender<GlossaryEvent>, level: LogLevel, message: String)
 pub async fn build_glossary(
     job: BuildJob,
     svc: &LlmService,
+    norm_svc: &LlmService,
     personalize_svc: Option<&LlmService>,
     tx: mpsc::Sender<GlossaryEvent>,
 ) {
@@ -277,7 +278,7 @@ pub async fn build_glossary(
             Some(format!("{} new terms", new_terms.count())),
         )
         .await;
-        new_terms = normalize::normalize_pass(svc, &new_terms, &tx, &job.prompts.normalize).await;
+        new_terms = normalize::normalize_pass(norm_svc, &new_terms, &tx, &job.prompts.normalize).await;
         // A cancel mid-normalize reports normalized=false even though some
         // categories may already have been normalized (each keeps its original
         // terms on failure, so the data is valid either way) — conservative
@@ -435,7 +436,7 @@ mod tests {
         p_svc: Option<&LlmService>,
     ) -> (Vec<GlossaryEvent>, crate::events::GlossaryBuildSummary) {
         let (tx, mut rx) = tokio::sync::mpsc::channel(256);
-        build_glossary(job, svc, p_svc, tx).await;
+        build_glossary(job, svc, svc, p_svc, tx).await;
         let mut events = Vec::new();
         while let Ok(ev) = rx.try_recv() {
             events.push(ev);
@@ -572,7 +573,7 @@ mod tests {
         std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(256);
-        build_glossary(job(dir.path(), vec!["e1.ass".into()], cancel), &svc, None, tx).await;
+        build_glossary(job(dir.path(), vec!["e1.ass".into()], cancel), &svc, &svc, None, tx).await;
 
         // Restore BEFORE asserting so the tempdir can clean itself up.
         std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();

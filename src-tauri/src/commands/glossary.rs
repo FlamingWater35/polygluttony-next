@@ -93,7 +93,7 @@ pub async fn normalize_glossary(app: AppHandle, folder: String) -> AppResult<Nor
     let _guard = run::SlotGuard::new(app.clone());
     let (tx, rx) = tokio::sync::mpsc::channel(256);
     run::spawn_forwarder(app.clone(), rx);
-    let svc = run::service_for(&conn, cancel.clone(), tx.clone());
+    let svc = run::service_for(&conn.for_glossary_norm(), cancel.clone(), tx.clone());
     let normalized = normalize_pass(&svc, &original, &tx, &templates).await;
     Ok(NormalizeReview {
         diff: GlossaryDiff::compute(Some(&original), &normalized),
@@ -129,7 +129,7 @@ pub async fn import_reference_files(
     let _guard = run::SlotGuard::new(app.clone());
     let (tx, rx) = tokio::sync::mpsc::channel(256);
     run::spawn_forwarder(app.clone(), rx);
-    let svc = run::service_for(&conn, cancel.clone(), tx.clone());
+    let svc = run::service_for(&conn.for_glossary(), cancel.clone(), tx.clone());
     let files: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
     let (terms, files_processed, errors) =
         reference::extract_from_files(&svc, &files, conn.batch_dialogue_limit, &tx, &reference_template).await;
