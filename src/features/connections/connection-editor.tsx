@@ -10,7 +10,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { SetupField } from "@/components/setup-field";
 import { HelpText } from "@/components/help-text";
 import { ModelCombobox } from "./model-combobox";
-import { AdvancedSettingsSection, ExtendedThinkingSection } from "./advanced-sections";
+import {
+  AdvancedSettingsSection,
+  ExtendedThinkingSection,
+  BUDGET_FIELDS,
+  budgetValidate,
+} from "./advanced-sections";
 
 const EMPTY: Connection = {
   driver: "openai",
@@ -68,7 +73,7 @@ export function ConnectionEditor({
   onListModels: (c: Connection, detect: boolean) => Promise<string[]>;
 }) {
   const form = useForm<Connection>({ defaultValues: initial ?? EMPTY });
-  const { register, handleSubmit, watch, setValue, reset, formState } = form;
+  const { register, handleSubmit, watch, setValue, reset, setError, clearErrors, formState } = form;
   useEffect(() => {
     reset(initial ?? EMPTY);
     setPresetKey(initial ? matchPresetKey(initial, presets) : "");
@@ -146,8 +151,27 @@ export function ConnectionEditor({
     <form
       className="flex flex-1 flex-col"
       onSubmit={handleSubmit(async (c) => {
+        clearErrors("root");
         const finalName = connName.trim();
         if (!finalName) return;
+
+        // Budget rules must hold even when the collapsed section's inputs are
+        // unmounted (react-hook-form skips unmounted validators on submit).
+        let budgetsOk = true;
+        for (const f of BUDGET_FIELDS) {
+          const verdict = budgetValidate(c[f], c);
+          if (verdict !== true) {
+            setError(f, { type: "validate", message: verdict });
+            budgetsOk = false;
+          }
+        }
+        if (!budgetsOk) {
+          setError("root", {
+            message: "Fix the thinking budgets in Extended thinking before saving.",
+          });
+          return;
+        }
+
         // Renaming an existing connection moves the entry (and its active /
         // personalization references) before we persist the edited fields.
         if (!name.startsWith("new-") && finalName !== name) {
@@ -294,6 +318,11 @@ export function ConnectionEditor({
         >
           Remove
         </Button>
+        {formState.errors.root?.message ? (
+          <p className="text-[11px] text-[color:var(--color-danger)]">
+            {formState.errors.root.message}
+          </p>
+        ) : null}
         <div className="flex-1" />
         {!isActive ? (
           <Button

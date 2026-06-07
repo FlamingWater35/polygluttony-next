@@ -88,7 +88,7 @@ export function AdvancedSettingsSection({
           label="Max tokens"
           type="number"
           help="Response size cap. Too low cuts off long batches."
-          {...register("max_tokens", { valueAsNumber: true })}
+          {...register("max_tokens", { valueAsNumber: true, deps: [...BUDGET_FIELDS] })}
         />
         <AdvField
           label="Batch dialogue limit"
@@ -127,12 +127,13 @@ export function seedBudget(maxTokens: number | null): number {
   return Math.max(MIN_BUDGET, Math.floor((maxTokens ?? 16000) / 4));
 }
 
-/** Hard validation (blocks save): required · ≥1024 · < Max tokens. */
-function budgetValidate(v: unknown, values: Connection): true | string {
-  if (!values.thinking_enabled) return true;
+/** Hard validation (blocks save): required · ≥1024 · integer · < Max tokens. */
+export function budgetValidate(v: unknown, values: Connection): true | string {
+  if (values.driver !== "anthropic" || !values.thinking_enabled) return true;
   const n = numOrNull(v);
   if (n == null) return "Required when thinking is enabled.";
   if (n < MIN_BUDGET) return `Minimum ${MIN_BUDGET} tokens.`;
+  if (!Number.isInteger(n)) return "Must be a whole number.";
   const max = numOrNull(values.max_tokens);
   if (max != null && n >= max) return `Must be less than Max tokens (${max}).`;
   return true;
@@ -209,6 +210,8 @@ export function ExtendedThinkingSection({ form }: { form: UseFormReturn<Connecti
                 key={field}
                 label={label}
                 type="number"
+                min={1024}
+                step={1}
                 help={help}
                 error={formState.errors[field]?.message as string | undefined}
                 warn={budgetWarning(current[field], current.max_tokens)}
