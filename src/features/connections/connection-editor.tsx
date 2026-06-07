@@ -25,7 +25,6 @@ const EMPTY: Connection = {
   thinking_enabled: null,
   thinking_budget: null,
   web_search: null,
-  prompt_template: null,
   thinking_glossary_norm_budget: null,
 } as unknown as Connection;
 
@@ -64,8 +63,8 @@ export function ConnectionEditor({
   onSetPersonalization: (name: string) => void;
   onRemove: (name: string) => void;
   onRename: (oldName: string, newName: string) => Promise<void> | void;
-  onTest: (c: Connection) => Promise<TestResult>;
-  onListModels: (c: Connection) => Promise<string[]>;
+  onTest: (c: Connection, detect: boolean) => Promise<TestResult>;
+  onListModels: (c: Connection, detect: boolean) => Promise<string[]>;
 }) {
   const { register, handleSubmit, watch, setValue, reset, formState } =
     useForm<Connection>({ defaultValues: initial ?? EMPTY });
@@ -83,6 +82,8 @@ export function ConnectionEditor({
   const [liveModels, setLiveModels] = useState<string[]>([]);
 
   const current = watch();
+  // Only true when the user explicitly selected the Custom preset; a blank new
+  // form sends detect=false — same behaviour the old "__detect__" sentinel had.
   const isCustom = presetKey === "custom";
   const curated = useMemo(
     () => presets.find((p) => p.key === presetKey)?.models ?? [],
@@ -107,13 +108,10 @@ export function ConnectionEditor({
     if (p.model) setValue("model", p.model, { shouldDirty: true });
   };
 
-  const withDetectSentinel = (c: Connection): Connection =>
-    isCustom ? { ...c, prompt_template: "__detect__" } : c;
-
   const runTest = async () => {
     setTestState("testing");
     try {
-      const res = await onTest(withDetectSentinel(current));
+      const res = await onTest(current, isCustom);
       if (res.detected_driver)
         setValue("driver", res.detected_driver, { shouldDirty: true });
       setTestState(res);
@@ -129,7 +127,7 @@ export function ConnectionEditor({
 
   const refreshModels = async () => {
     try {
-      setLiveModels(await onListModels(withDetectSentinel(current)));
+      setLiveModels(await onListModels(current, isCustom));
     } catch {
       // keep curated list on failure
     }
@@ -141,13 +139,12 @@ export function ConnectionEditor({
       onSubmit={handleSubmit(async (c) => {
         const finalName = connName.trim();
         if (!finalName) return;
-        const conn = { ...c, prompt_template: null } as Connection;
         // Renaming an existing connection moves the entry (and its active /
         // personalization references) before we persist the edited fields.
         if (!name.startsWith("new-") && finalName !== name) {
           await onRename(name, finalName);
         }
-        await onSave(finalName, conn);
+        await onSave(finalName, c);
       })}
     >
       <div className="flex-1 space-y-1 overflow-auto p-4">

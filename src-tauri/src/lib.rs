@@ -17,6 +17,7 @@ mod ass;
 mod utils;
 mod glossary;
 mod llm;
+mod prompts;
 mod translation;
 mod validation;
 
@@ -76,6 +77,11 @@ pub fn run() {
             commands::watch_glossary,
             commands::unwatch_glossary,
             commands::personalization_status,
+            commands::list_prompts,
+            commands::get_prompt,
+            commands::save_prompt,
+            commands::reset_prompt,
+            commands::read_prompt_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

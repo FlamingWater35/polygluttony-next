@@ -1,28 +1,19 @@
 //! Glossary prompt assembly. Port of `glossary_builder.py:378-439` (+ the
 //! normalize/personalize prompt loads at 459-467, 542-553).
 //!
+//! Templates are catalog-resolved at job start (via `crate::prompts::GlossaryPrompts`
+//! / `crate::prompts::resolve`) and injected as `&str` parameters — no
+//! `include_str!` statics live in this module.
+//!
 //! Python bug fixed here: `glossary.txt` uses lowercase `{world_type}` but the
 //! builder only ever replaced `{WORLD_TYPE}` — the placeholder reached the LLM
-//! verbatim. We fill BOTH cases of every placeholder (same fix as
-//! `translation/prompts.rs`).
+//! verbatim. `crate::prompts::fill` handles both cases.
 
 use std::collections::BTreeMap;
 
 use crate::glossary::model::Glossary;
 use crate::glossary::reference::ReferenceTerminology;
 use crate::models::language_pair::LanguagePair;
-
-const GLOSSARY: &str = include_str!("../../prompts/glossary.txt");
-const GLOSSARY_QWEN: &str = include_str!("../../prompts/glossary.qwen.txt");
-const NORM_CHARACTERS: &str = include_str!("../../prompts/glossary-normalize-characters.txt");
-const NORM_CULTIVATION: &str = include_str!("../../prompts/glossary-normalize-cultivation.txt");
-const NORM_SKILLS: &str = include_str!("../../prompts/glossary-normalize-skills.txt");
-const NORM_LOCATIONS: &str = include_str!("../../prompts/glossary-normalize-locations.txt");
-const NORM_ITEMS: &str = include_str!("../../prompts/glossary-normalize-items.txt");
-const NORM_ORGANIZATIONS: &str =
-    include_str!("../../prompts/glossary-normalize-organizations.txt");
-const PERSONALIZE: &str = include_str!("../../prompts/glossary-personalize.txt");
-pub const REFERENCE_EXTRACT: &str = include_str!("../../prompts/reference-extract.txt");
 
 /// Strip the first `## {heading}` section (everything from that heading up to
 /// the next `##` heading, or end of string). The `regex` crate does not support
@@ -46,32 +37,28 @@ fn strip_section(text: &str, heading: &str) -> String {
     format!("{}{}", &text[..start], &text[end..])
 }
 
-/// System prompt for one extraction batch. `variant` comes from
-/// `Connection.prompt_template` ("qwen" selects `glossary.qwen.txt`).
+/// System prompt for one extraction batch (`template` = resolved glossary.txt).
 pub fn extraction_prompt(
+    template: &str,
     world: &str,
     pair: &LanguagePair,
     reference: Option<&ReferenceTerminology>,
-    variant: Option<&str>,
 ) -> String {
-    let template = match variant {
-        Some("qwen") => GLOSSARY_QWEN,
-        _ => GLOSSARY,
-    };
-    let mut p = template
-        .replace("{WORLD_TYPE}", world)
-        .replace("{world_type}", world)
-        // Not present in today's templates; filled for forward-compat
-        // (Python replaced the uppercase pair too).
-        .replace("{SOURCE_LANGUAGE}", &pair.source_name)
-        .replace("{source_language}", &pair.source_name)
-        .replace("{TARGET_LANGUAGE}", &pair.target_name)
-        .replace("{target_language}", &pair.target_name);
+    let mut p = crate::prompts::fill(
+        template,
+        &[
+            ("world_type", world),
+            ("source_language", &pair.source_name),
+            ("target_language", &pair.target_name),
+        ],
+    );
     // Build path never injects established terms (glossary_builder.py:274-280
     // hardcodes context=None) — strip the section unconditionally.
     p = strip_section(&p, "ESTABLISHED TERMINOLOGY");
     p = match reference {
-        Some(r) if !r.is_empty() => p.replace("{reference_terminology}", &r.to_prompt_string()),
+        Some(r) if !r.is_empty() => {
+            crate::prompts::fill(&p, &[("reference_terminology", &r.to_prompt_string())])
+        }
         _ => strip_section(&p, "REFERENCE TERMINOLOGY"),
     };
     p
@@ -81,18 +68,9 @@ pub fn extraction_user_prompt(batch: &str) -> String {
     format!("Extract terms from this text:\n\n{batch}")
 }
 
-/// Per-category normalize prompt (`glossary_builder.py:459-467`).
-pub fn normalize_prompt(category: &str, world: &str) -> String {
-    let template = match category {
-        "characters" => NORM_CHARACTERS,
-        "cultivation" => NORM_CULTIVATION,
-        "skills" => NORM_SKILLS,
-        "locations" => NORM_LOCATIONS,
-        "items" => NORM_ITEMS,
-        "organizations" => NORM_ORGANIZATIONS,
-        _ => unreachable!("unknown glossary category: {category}"),
-    };
-    template.replace("{WORLD_TYPE}", world).replace("{world_type}", world)
+/// Per-category normalize prompt (`template` = the category's resolved template).
+pub fn normalize_prompt(template: &str, world: &str) -> String {
+    crate::prompts::fill(template, &[("world_type", world)])
 }
 
 /// User prompt = the category's terms as pretty JSON
@@ -101,16 +79,13 @@ pub fn normalize_user_prompt(terms: &BTreeMap<String, String>) -> String {
     serde_json::to_string_pretty(terms).expect("serializable")
 }
 
-/// Personalize prompt: `{donghua_title}` = first context line or "Unknown"
+/// Personalize prompt (`template` = resolved glossary-personalize.txt).
+/// `{donghua_title}` = first context line or "Unknown"
 /// (`glossary_builder.py:548-553`).
-pub fn personalize_prompt(world: &str, context: &str) -> String {
+pub fn personalize_prompt(template: &str, world: &str, context: &str) -> String {
     let title =
         context.lines().next().map(str::trim).filter(|t| !t.is_empty()).unwrap_or("Unknown");
-    PERSONALIZE
-        .replace("{donghua_title}", title)
-        .replace("{DONGHUA_TITLE}", title)
-        .replace("{world_type}", world)
-        .replace("{WORLD_TYPE}", world)
+    crate::prompts::fill(template, &[("donghua_title", title), ("world_type", world)])
 }
 
 /// `glossary_builder.py:554-556`.
@@ -132,9 +107,13 @@ mod tests {
         LanguagePair::from_codes("zh", "en").unwrap()
     }
 
+    fn extract_tpl() -> &'static str {
+        crate::prompts::default_text(crate::prompts::PromptId::GlossaryExtract)
+    }
+
     #[test]
     fn extraction_prompt_fills_both_cases_and_strips_established() {
-        let p = extraction_prompt("wuxia", &pair(), None, None);
+        let p = extraction_prompt(extract_tpl(), "wuxia", &pair(), None);
         assert!(!p.contains("{world_type}"), "lowercase placeholder must be filled");
         assert!(!p.contains("{WORLD_TYPE}"));
         assert!(p.contains("wuxia"));
@@ -152,22 +131,10 @@ mod tests {
             characters: vec!["Lin Dong".into()],
             ..Default::default()
         };
-        let p = extraction_prompt("xianxia", &pair(), Some(&r), None);
+        let p = extraction_prompt(extract_tpl(), "xianxia", &pair(), Some(&r));
         assert!(p.contains("## REFERENCE TERMINOLOGY"));
         assert!(p.contains("CHARACTER NAMES: Lin Dong"));
         assert!(!p.contains("{reference_terminology}"));
-    }
-
-    #[test]
-    fn qwen_variant_differs_unknown_falls_back() {
-        let base = extraction_prompt("xianxia", &pair(), None, None);
-        let qwen = extraction_prompt("xianxia", &pair(), None, Some("qwen"));
-        let unknown = extraction_prompt("xianxia", &pair(), None, Some("nope"));
-        assert_ne!(base, qwen);
-        assert_eq!(base, unknown);
-        // No raw placeholders should survive substitution in the qwen variant.
-        assert!(!qwen.contains("{established_terms}"));
-        assert!(!qwen.contains("{world_type}"));
     }
 
     // --- Direct unit tests for the private `strip_section` helper ---
@@ -227,7 +194,8 @@ mod tests {
     #[test]
     fn normalize_prompts_exist_for_all_categories_and_fill_world() {
         for c in crate::glossary::model::CATEGORIES {
-            let p = normalize_prompt(c, "xianxia");
+            let template = crate::prompts::default_text(crate::prompts::normalize_id(c));
+            let p = normalize_prompt(template, "xianxia");
             assert!(!p.contains("{world_type}"), "{c}: lowercase filled");
             assert!(!p.contains("{WORLD_TYPE}"), "{c}: uppercase filled");
         }
@@ -243,11 +211,12 @@ mod tests {
 
     #[test]
     fn personalize_prompt_uses_first_context_line_as_title() {
-        let p = personalize_prompt("xianxia", "Martial Universe\nextra notes");
+        let tpl = crate::prompts::default_text(crate::prompts::PromptId::GlossaryPersonalize);
+        let p = personalize_prompt(tpl, "xianxia", "Martial Universe\nextra notes");
         assert!(p.contains("Martial Universe"));
         assert!(!p.contains("{donghua_title}"));
         assert!(!p.contains("{world_type}"));
-        let p2 = personalize_prompt("modern", "");
+        let p2 = personalize_prompt(tpl, "modern", "");
         assert!(p2.contains("Unknown"));
     }
 

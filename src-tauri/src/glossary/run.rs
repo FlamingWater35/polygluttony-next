@@ -160,6 +160,9 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     let conn =
         crate::translation::run::usable_connection(&cfg).ok_or(AppError::NoActiveConnection)?;
 
+    let prompt_pack =
+        crate::prompts::GlossaryPrompts::resolve(&crate::prompts::overrides_dir(&app)?)?;
+
     let cancel = claim_slot(&app, GlossaryOpKind::Build).await?;
     let (tx, rx) = mpsc::channel::<GlossaryEvent>(512);
     spawn_forwarder(app.clone(), rx);
@@ -185,7 +188,7 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
         normalize: args.normalize,
         personalize: args.personalize,
         personalize_context: args.personalize_context,
-        template_variant: conn.prompt_template.clone(),
+        prompts: prompt_pack,
         batch_limit: conn.batch_dialogue_limit,
         cancel: cancel.clone(),
     };

@@ -82,6 +82,8 @@ pub async fn normalize_glossary(app: AppHandle, folder: String) -> AppResult<Nor
     let cfg = config_store::load(&app)?;
     let conn =
         crate::translation::run::usable_connection(&cfg).ok_or(AppError::NoActiveConnection)?;
+    let templates =
+        crate::prompts::GlossaryPrompts::resolve_normalize(&crate::prompts::overrides_dir(&app)?)?;
     let cancel = run::claim_slot(&app, GlossaryOpKind::Normalize).await?;
     // RAII: the guard releases the slot on every exit path, including panics.
     // Declared before svc/tx so it drops last (after their senders close).
@@ -89,7 +91,7 @@ pub async fn normalize_glossary(app: AppHandle, folder: String) -> AppResult<Nor
     let (tx, rx) = tokio::sync::mpsc::channel(256);
     run::spawn_forwarder(app.clone(), rx);
     let svc = run::service_for(&conn, cancel.clone(), tx.clone());
-    let normalized = normalize_pass(&svc, &original, &tx).await;
+    let normalized = normalize_pass(&svc, &original, &tx, &templates).await;
     Ok(NormalizeReview {
         diff: GlossaryDiff::compute(Some(&original), &normalized),
         normalized: GlossaryDoc::from(&normalized),
@@ -111,6 +113,10 @@ pub async fn import_reference_files(
     let cfg = config_store::load(&app)?;
     let conn =
         crate::translation::run::usable_connection(&cfg).ok_or(AppError::NoActiveConnection)?;
+    let reference_template = crate::prompts::resolve(
+        crate::prompts::PromptId::ReferenceExtract,
+        &crate::prompts::overrides_dir(&app)?,
+    )?;
     let cancel = run::claim_slot(&app, GlossaryOpKind::Import).await?;
     // RAII: the guard releases the slot on every exit path, including panics.
     // Declared before svc/tx so it drops last (after their senders close).
@@ -120,7 +126,7 @@ pub async fn import_reference_files(
     let svc = run::service_for(&conn, cancel.clone(), tx.clone());
     let files: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
     let (terms, files_processed, errors) =
-        reference::extract_from_files(&svc, &files, conn.batch_dialogue_limit, &tx).await;
+        reference::extract_from_files(&svc, &files, conn.batch_dialogue_limit, &tx, &reference_template).await;
     let count = terms.count() as u32;
     if count > 0 {
         reference::save_cache(&dir, &terms)?;

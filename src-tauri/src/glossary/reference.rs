@@ -262,6 +262,7 @@ pub async fn extract_from_files(
     files: &[PathBuf],
     batch_limit: Option<u32>,
     tx: &mpsc::Sender<GlossaryEvent>,
+    template: &str,
 ) -> (ReferenceTerminology, u32, Vec<String>) {
     let (lines, files_ok) = collect_dialogue_lines(files);
     if lines.is_empty() {
@@ -284,7 +285,7 @@ pub async fn extract_from_files(
         .into_iter()
         .map(|batch| {
             let req = LlmRequest {
-                system: crate::glossary::prompts::REFERENCE_EXTRACT.to_string(),
+                system: template.to_string(),
                 user: crate::glossary::prompts::extraction_user_prompt(&batch),
             };
             let tx = tx.clone();
@@ -331,6 +332,7 @@ pub async fn load_or_extract(
     svc: &LlmService,
     batch_limit: Option<u32>,
     tx: &mpsc::Sender<GlossaryEvent>,
+    template: &str,
 ) -> Option<ReferenceTerminology> {
     let cache_path = folder.join(CACHE_FILENAME);
     if cache_path.exists() {
@@ -376,7 +378,7 @@ pub async fn load_or_extract(
             ),
         })
         .await;
-    let (t, _files_ok, errors) = extract_from_files(svc, &files, batch_limit, tx).await;
+    let (t, _files_ok, errors) = extract_from_files(svc, &files, batch_limit, tx, template).await;
     for e in errors {
         let _ = tx
             .send(GlossaryEvent::Log { level: LogLevel::Warning, message: e })
@@ -546,6 +548,10 @@ mod tests {
         p
     }
 
+    fn ref_tpl() -> &'static str {
+        crate::prompts::default_text(crate::prompts::PromptId::ReferenceExtract)
+    }
+
     #[tokio::test(start_paused = true)]
     async fn extractor_merges_batches_and_dedupes() {
         let dir = tempfile::tempdir().unwrap();
@@ -555,7 +561,7 @@ mod tests {
         )]);
         let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
         let svc = make_svc(d, 2);
-        let (t, files_ok, errors) = extract_from_files(&svc, &[f], Some(300), &gtx).await;
+        let (t, files_ok, errors) = extract_from_files(&svc, &[f], Some(300), &gtx, ref_tpl()).await;
         assert!(errors.is_empty());
         assert_eq!(files_ok, 1);
         assert_eq!(t.characters, vec!["Lin Dong"]); // deduped case-insensitively
@@ -571,12 +577,12 @@ mod tests {
         // FuturesOrdered delivers results in script order (deterministic).
         let f = write_ass(dir.path(), "e1.ass", &["line one", "line two"]);
         let d = ScriptedDriver::new(vec![
-            Err(crate::llm::error::LlmError::Http { status: 400, body: "bad request".into() }),
+            Err(crate::llm::error::LlmError::Http { status: 400, body: "bad request".into(), retry_after: None }),
             Ok(r#"{"locations":["Qingyang Town"]}"#.into()),
         ]);
         let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
         let svc = make_svc(d, 1);
-        let (t, _files_ok, errors) = extract_from_files(&svc, &[f], Some(2), &gtx).await;
+        let (t, _files_ok, errors) = extract_from_files(&svc, &[f], Some(2), &gtx, ref_tpl()).await;
         assert_eq!(errors.len(), 1, "expected 1 error, got: {:?}", errors);
         assert!(
             errors[0].contains("failed"),
@@ -598,7 +604,7 @@ mod tests {
             LlmService::new(d, 1, cancel, tx)
         };
         let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
-        let (t, _files_ok, errors) = extract_from_files(&svc, &[f], Some(2), &gtx).await;
+        let (t, _files_ok, errors) = extract_from_files(&svc, &[f], Some(2), &gtx, ref_tpl()).await;
         assert!(t.is_empty());
         assert!(errors.is_empty(), "cancel noise must be suppressed: {errors:?}");
     }
@@ -616,7 +622,7 @@ mod tests {
             let (tx, _rx) = tokio::sync::mpsc::channel(64);
             LlmService::new(d, 1, CancellationToken::new(), tx)
         };
-        let _ = extract_from_files(&svc, &[f], Some(2), &gtx).await;
+        let _ = extract_from_files(&svc, &[f], Some(2), &gtx, ref_tpl()).await;
         drop(gtx);
         let mut dones = Vec::new();
         while let Ok(ev) = grx.try_recv() {
@@ -642,7 +648,7 @@ mod tests {
         let d = ScriptedDriver::new(vec![]);
         let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
         let svc = make_svc(d, 2);
-        let t = load_or_extract(dir.path(), &svc, Some(300), &gtx).await;
+        let t = load_or_extract(dir.path(), &svc, Some(300), &gtx, ref_tpl()).await;
         assert_eq!(t.unwrap().items, vec!["Stone Talisman"]);
     }
 
@@ -655,10 +661,29 @@ mod tests {
         let d = ScriptedDriver::new(vec![Ok(r#"{"characters":["Lin Dong"]}"#.into())]);
         let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
         let svc = make_svc(d, 2);
-        let t = load_or_extract(dir.path(), &svc, Some(300), &gtx).await.unwrap();
+        let t = load_or_extract(dir.path(), &svc, Some(300), &gtx, ref_tpl()).await.unwrap();
         assert_eq!(t.characters, vec!["Lin Dong"]);
         // Cached for next time.
         assert_eq!(load_cache(dir.path()).unwrap().characters, vec!["Lin Dong"]);
+    }
+
+    /// Custom reference template reaches the wire: a marked template must appear
+    /// in req.system for the extraction call.
+    #[tokio::test(start_paused = true)]
+    async fn custom_reference_template_reaches_the_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = write_ass(dir.path(), "e1.ass", &["Lin Dong attacks"]);
+        let d = ScriptedDriver::new(vec![Ok(r#"{"characters":["Lin Dong"]}"#.into())]);
+        let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
+        let svc = make_svc(d.clone(), 2);
+        let tpl = "XREFX";
+        let _ = extract_from_files(&svc, &[f], Some(300), &gtx, tpl).await;
+        let req = d.last_request().expect("extraction must have sent a request");
+        assert!(
+            req.system.starts_with("XREFX"),
+            "custom reference template must reach the wire: {:?}",
+            req.system
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -667,6 +692,6 @@ mod tests {
         let d = ScriptedDriver::new(vec![]);
         let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
         let svc = make_svc(d, 2);
-        assert!(load_or_extract(dir.path(), &svc, Some(300), &gtx).await.is_none());
+        assert!(load_or_extract(dir.path(), &svc, Some(300), &gtx, ref_tpl()).await.is_none());
     }
 }

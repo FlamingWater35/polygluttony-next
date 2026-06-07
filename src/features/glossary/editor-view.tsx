@@ -11,6 +11,7 @@ import {
   Play,
   Plus,
   Sparkle,
+  Stop,
   X,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -63,6 +64,7 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
   const qc = useQueryClient();
   const { startOp, endOp, setLastDiff } = useGlossaryRun.getState();
   const busy = useGlossaryRun((s) => s.busy);
+  const error = useGlossaryRun((s) => s.error);
   const lastDiff = useGlossaryRun((s) => s.lastDiff);
   const summary = useGlossaryRun((s) => s.summary);
   const openReview = useGlossaryRun((s) => s.openReview);
@@ -164,18 +166,31 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
     persist(withTerm(cat, source, translation));
   };
 
+  const normalizeCancelled = useRef(false);
+
   const normalize = () => {
+    normalizeCancelled.current = false;
     startOp("normalize", view.folder);
     ipc
       .normalizeGlossary(view.folder)
       .then((r) => {
-        // A user-cancel resolves Ok with a no-changes review — never show an
-        // empty review dialog for it (or for an already-consistent glossary).
-        if (r.diff.has_changes) setReview(r);
-        else toast.info("No changes — the glossary is already consistent.");
+        // A user-cancel resolves Ok with a no-changes review — discard it
+        // (commands/glossary.rs cancel semantics) instead of presenting it.
+        if (normalizeCancelled.current) {
+          toast.info("Normalization cancelled.");
+        } else if (r.diff.has_changes) {
+          setReview(r);
+        } else {
+          toast.info("No changes — the glossary is already consistent.");
+        }
       })
       .catch((e: unknown) => toast.error(String(e)))
       .finally(() => endOp());
+  };
+
+  const cancelNormalize = () => {
+    normalizeCancelled.current = true;
+    ipc.cancelGlossaryBuild().catch((e: unknown) => toast.error(String(e)));
   };
 
   const acceptReview = () => {
@@ -230,6 +245,11 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
               <Sparkle className="size-4" />
               {busy === "normalize" ? "Normalizing…" : "Normalize"}
             </Button>
+            {busy === "normalize" ? (
+              <Button size="sm" variant="destructive" onClick={cancelNormalize}>
+                <Stop className="size-4" /> Cancel
+              </Button>
+            ) : null}
             {lastDiff?.has_changes ? (
               <Button size="sm" variant="secondary" onClick={() => setInfoDiff(lastDiff)}>
                 <ArrowsDownUp className="size-4" /> View changes
@@ -248,6 +268,12 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
           </div>
         }
       />
+
+      {error ? (
+        <div className="px-5 pt-3">
+          <p className="text-sm text-[color:var(--color-danger)]">{error}</p>
+        </div>
+      ) : null}
 
       <div className="flex-1 overflow-auto p-5">
         {/* Search + add-term row */}

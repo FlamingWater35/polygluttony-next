@@ -17,6 +17,8 @@ import type { ReferenceStatus } from "@/types/generated/ReferenceStatus";
 import type { ReferenceSummary } from "@/types/generated/ReferenceSummary";
 import type { ReferenceTerminology } from "@/types/generated/ReferenceTerminology";
 import type { WorldType } from "@/types/generated/WorldType";
+import type { PromptId } from "@/types/generated/PromptId";
+import type { PromptMeta } from "@/types/generated/PromptMeta";
 
 /**
  * Typed wrappers around the Rust core's Tauri commands. The webview never talks
@@ -46,17 +48,12 @@ export const ipc = {
   /** Set the personalization (web-lookup) connection. */
   setPersonalizationConnection: (name: string) =>
     invoke<void>("set_personalization_connection", { name }),
-  /**
-   * O5 — test a connection. For Custom connections the caller should set
-   * `connection.prompt_template = "__detect__"` to trigger auto-detection.
-   */
-  testConnection: (connection: Connection) =>
-    invoke<TestResult>("test_connection", { connection }),
-  /**
-   * Fetch live model list for a connection. Same detection sentinel applies
-   * for Custom: set `connection.prompt_template = "__detect__"`.
-   */
-  listModels: (connection: Connection) => invoke<string[]>("list_models", { connection }),
+  /** O5 — test a connection. `detect: true` probes the endpoint's API format (Custom preset). */
+  testConnection: (connection: Connection, detect: boolean) =>
+    invoke<TestResult>("test_connection", { connection, detect }),
+  /** Fetch live model list. Same `detect` flag as testConnection for Custom. */
+  listModels: (connection: Connection, detect: boolean) =>
+    invoke<string[]>("list_models", { connection, detect }),
   /** O6/O7/O8 — open a folder: discover files, counts, detect world/language, load prefs. */
   openFolder: (path: string) =>
     invoke<ProjectView>("open_folder", { path, now: Math.floor(Date.now() / 1000) }),
@@ -79,7 +76,7 @@ export const ipc = {
     tone: Tone
     sourceLang: string
     targetLang: string
-  }) => invoke<void>("start_translation", { ...args, now: Math.floor(Date.now() / 1000) }),
+  }) => invoke<void>("start_translation", args),
   /** O17 — cancel the active run. */
   cancelTranslation: () => invoke<void>("cancel_translation"),
   /** O9 — load glossary.json (null when none exists). */
@@ -123,6 +120,16 @@ export const ipc = {
   unwatchGlossary: () => invoke<void>("unwatch_glossary"),
   /** Web-capable personalization connection name, or null (checkbox gating). */
   personalizationStatus: () => invoke<string | null>("personalization_status"),
+  /** Settings — list all prompt templates with modified flags + placeholder specs. */
+  listPrompts: () => invoke<PromptMeta[]>("list_prompts"),
+  /** Settings — current effective text (override or embedded default). */
+  getPrompt: (id: PromptId) => invoke<string>("get_prompt", { id }),
+  /** Settings — validate + persist a custom prompt override. */
+  savePrompt: (id: PromptId, text: string) => invoke<void>("save_prompt", { id, text }),
+  /** Settings — delete the override; returns the embedded default text. */
+  resetPrompt: (id: PromptId) => invoke<string>("reset_prompt", { id }),
+  /** Settings — read a picked .txt file for "Load from file…" (≤1 MB, UTF-8). */
+  readPromptFile: (path: string) => invoke<string>("read_prompt_file", { path }),
 };
 
 /** Subscribe to a backend-emitted event (progress, logs, …). Returns an unlisten fn. */

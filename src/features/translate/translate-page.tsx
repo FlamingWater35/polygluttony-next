@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Play, Stop } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, Play, Stop } from "@phosphor-icons/react";
+import { stateToCells, StatusGlyph, IssuePanel } from "./file-cells";
 import { LogToggleButton, LogPanel } from "@/components/log-drawer";
 import type { Tone } from "@/types/generated/Tone";
 import { ipc } from "@/lib/ipc";
@@ -83,6 +84,14 @@ export function TranslatePage() {
   const results = useTranslationRun((s) => s.results);
 
   const [logsOpen, setLogsOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpand = (name: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
 
   if (!workdir || !view) return null;
 
@@ -119,6 +128,7 @@ export function TranslatePage() {
   const canStart = !running && selected.length > 0 && hasUsableConnection;
 
   const handleStart = () => {
+    setExpanded(new Set());
     useTranslationRun.getState().start(selected);
     ipc.startTranslation({
       folder: workdir,
@@ -162,14 +172,6 @@ export function TranslatePage() {
           </>
         ) : null}
         <span className="text-muted-foreground">.</span>
-        {warn > 0 ? (
-          <span
-            className="ml-3 cursor-not-allowed text-xs text-muted-foreground line-through"
-            title="Verify view arrives in a later step"
-          >
-            Review issues →
-          </span>
-        ) : null}
       </div>
     );
   }
@@ -188,7 +190,7 @@ export function TranslatePage() {
       state = row.state;
     }
 
-    return { file: f, row, state };
+    return { file: f, row, state, result };
   });
 
   const inProgressCount = tableRows.filter(
@@ -255,21 +257,23 @@ export function TranslatePage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-[color:var(--color-bg-raised)] text-[11px] text-muted-foreground uppercase tracking-wide">
-                <th className="px-4 py-2 text-left font-medium w-[40%]">File</th>
-                <th className="px-4 py-2 text-right font-medium w-[10%] tabular-nums">Lines</th>
-                <th className="px-4 py-2 text-left font-medium w-[16%]">State</th>
+                <th className="px-4 py-2 text-left font-medium w-[26%]">File</th>
+                <th className="px-4 py-2 text-right font-medium w-[9%] tabular-nums">Lines</th>
+                <th className="px-4 py-2 text-left font-medium w-[17%]">State</th>
+                <th className="px-4 py-2 text-center font-medium w-[12%]">Translated</th>
+                <th className="px-4 py-2 text-center font-medium w-[12%]">Verified</th>
                 <th className="px-4 py-2 text-left font-medium">Progress</th>
               </tr>
             </thead>
             <tbody>
               {tableRows.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted-foreground">
                     No files selected. Go to the Project view to select files.
                   </td>
                 </tr>
               ) : (
-                tableRows.map(({ file, row, state }) => {
+                tableRows.map(({ file, row, state, result }) => {
                   const showProgress =
                     row &&
                     row.total > 0 &&
@@ -277,39 +281,80 @@ export function TranslatePage() {
                     state !== "done" &&
                     state !== "warning";
 
+                  const issues = (row?.issues.length ? row.issues : result?.issues) ?? [];
+                  const expandable = state === "warning" && issues.length > 0;
+                  const isExpanded = expandable && expanded.has(file.name);
+                  const cells = stateToCells(state, row?.reachedVerify ?? false);
+
                   return (
-                    <tr
-                      key={file.name}
-                      className="border-b border-border last:border-0 hover:bg-[color:var(--bg-hover)]"
-                    >
-                      <td className="px-4 py-2.5 text-[12.5px] font-mono truncate max-w-0 w-[40%]">
-                        <span className="truncate block">{file.name}</span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-[12px] text-muted-foreground w-[10%]">
-                        {file.dialogue_count.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2.5 w-[16%]">
-                        <FileStateChip state={state} />
-                      </td>
-                      <td className="px-4 py-2.5 text-[12px] text-muted-foreground tabular-nums">
-                        {showProgress && row ? (
-                          <span>
-                            {row.translated}/{row.total} · batch {row.batch}/{row.totalBatches}
-                            {row.retries > 0 ? (
-                              <span className="ml-2 text-[color:var(--color-alert)]">
-                                ↺ {row.retries}
-                              </span>
+                    <Fragment key={file.name}>
+                      <tr
+                        className={`border-b border-border last:border-0 hover:bg-[color:var(--color-bg-hover)]${expandable ? " cursor-pointer" : ""}`}
+                        onClick={expandable ? () => toggleExpand(file.name) : undefined}
+                        role={expandable ? "button" : undefined}
+                        tabIndex={expandable ? 0 : undefined}
+                        onKeyDown={
+                          expandable
+                            ? (e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  toggleExpand(file.name);
+                                }
+                              }
+                            : undefined
+                        }
+                      >
+                        <td className="px-4 py-2.5 text-[12.5px] font-mono truncate max-w-0 w-[26%]">
+                          <span className="truncate block">
+                            {expandable ? (
+                              isExpanded ? (
+                                <CaretDown className="mr-1 inline size-3 text-muted-foreground" />
+                              ) : (
+                                <CaretRight className="mr-1 inline size-3 text-muted-foreground" />
+                              )
                             ) : null}
+                            {file.name}
                           </span>
-                        ) : row?.error ? (
-                          <span className="text-[color:var(--color-danger)] truncate block max-w-xs">
-                            {row.error}
-                          </span>
-                        ) : (
-                          <span>—</span>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-[12px] text-muted-foreground w-[9%]">
+                          {file.dialogue_count.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2.5 w-[17%]">
+                          <FileStateChip state={state} />
+                        </td>
+                        <td className="px-4 py-2.5 text-center w-[12%]">
+                          <StatusGlyph kind={cells.translated} tone="translate" />
+                        </td>
+                        <td className="px-4 py-2.5 text-center w-[12%]">
+                          <StatusGlyph kind={cells.verified} tone="verify" />
+                        </td>
+                        <td className="px-4 py-2.5 text-[12px] text-muted-foreground tabular-nums">
+                          {showProgress && row ? (
+                            <span>
+                              {row.translated}/{row.total} · batch {row.batch}/{row.totalBatches}
+                              {row.retries > 0 ? (
+                                <span className="ml-2 text-[color:var(--color-alert)]">
+                                  ↺ {row.retries}
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : row?.error ? (
+                            <span className="text-[color:var(--color-danger)] truncate block max-w-xs">
+                              {row.error}
+                            </span>
+                          ) : (
+                            <span>—</span>
+                          )}
+                        </td>
+                      </tr>
+                      {isExpanded ? (
+                        <tr className="border-b border-border last:border-0">
+                          <td colSpan={6} className="p-0">
+                            <IssuePanel issues={issues} />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   );
                 })
               )}

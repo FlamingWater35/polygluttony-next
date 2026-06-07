@@ -38,7 +38,6 @@ use crate::ass::decode::decode_file;
 use crate::ass::parse::{parse_dialogues, DialogueLine};
 use crate::ass::tags::strip_for_text;
 use crate::ass::writer::write_translated;
-use crate::config::projects::Tone;
 use crate::events::{FileResult, FileStateKind, LogLevel, LogPhase, RunEvent, VerifyIssue};
 use crate::glossary::model::Glossary;
 use crate::llm::service::LlmService;
@@ -66,8 +65,7 @@ pub struct FileJob<'a> {
     pub svc: &'a LlmService,
     pub glossary: &'a Glossary,
     pub pair: LanguagePair,
-    pub tone: Tone,
-    pub template_variant: Option<String>,
+    pub prompts: &'a crate::prompts::TranslationPrompts,
     pub batch_limit: Option<u32>,
     pub cancel: CancellationToken,
     pub tx: mpsc::Sender<RunEvent>,
@@ -109,8 +107,8 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
     let lines = parse_dialogues(&original);
     let settings = BatchSettings {
         pair: job.pair.clone(),
-        tone: job.tone,
-        template_variant: job.template_variant.clone(),
+        template: job.prompts.template.clone(),
+        tone_text: job.prompts.tone.clone(),
     };
     let mut st = FileState {
         job: &job,
@@ -130,7 +128,7 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
 
     // 2. Initial batch loop + 3. cleanup pass.
     st.translate_all().await?;
-    st.run_cleanup(detector.as_ref()).await;
+    st.run_cleanup(detector.as_ref()).await?;
 
     // 4. Verify + scoped retranslation loop (`translator.py:176-311`).
     let all_ids: Vec<u32> = (1..=st.lines.len() as u32).collect();
@@ -142,7 +140,16 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
         }
         st.state(FileStateKind::Verifying, None).await;
         let stripped = st.stripped_pairs();
-        let report = verify_file(job.svc, &stripped, &job.glossary.all_terms()).await;
+        let report = verify_file(job.svc, &stripped, &job.glossary.all_terms(), &job.prompts.verify).await;
+        let report = match report {
+            Ok(r) => r,
+            Err(e) => {
+                // Dead key mid-verify: fail the file and doom the run, mirroring
+                // translation's Fatal handling (pipeline.rs BatchOutcome::Fatal).
+                job.cancel.cancel();
+                return Err(format!("verification aborted: {e}"));
+            }
+        };
         if report.issues.is_empty() {
             break; // clean
         }
@@ -204,7 +211,7 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
             }
         }
         // Re-run cleanup after any retranslation (`translator.py:307-311`).
-        st.run_cleanup(detector.as_ref()).await;
+        st.run_cleanup(detector.as_ref()).await?;
     }
 
     // 5. Final write.
@@ -234,7 +241,12 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
         .collect();
     write_translated(&path, &original, &out_lines).map_err(|e| e.to_string())?;
 
-    st.emit(RunEvent::FileDone { file: job.file_name.clone(), has_warnings }).await;
+    st.emit(RunEvent::FileDone {
+        file: job.file_name.clone(),
+        has_warnings,
+        issues: issues.clone(),
+    })
+    .await;
     st.state(
         if has_warnings { FileStateKind::Warning } else { FileStateKind::Done },
         None,
@@ -476,8 +488,8 @@ impl FileState<'_, '_> {
 
     /// Cleanup pass for residual source text (`translator.py:583-684`). No-op
     /// when the source language has no character pattern (detector is None).
-    async fn run_cleanup(&mut self, detector: Option<&SourceDetector>) {
-        let Some(det) = detector else { return };
+    async fn run_cleanup(&mut self, detector: Option<&SourceDetector>) -> Result<(), String> {
+        let Some(det) = detector else { return Ok(()) };
         self.state(FileStateKind::Cleanup, None).await;
         let sources: BTreeMap<u32, String> = self
             .lines
@@ -494,6 +506,10 @@ impl FileState<'_, '_> {
             &self.settings,
         )
         .await;
+        if let Some(msg) = report.fatal {
+            self.job.cancel.cancel();
+            return Err(format!("cleanup aborted: {msg}"));
+        }
         if report.skipped_too_many {
             self.log(
                 LogLevel::Warning,
@@ -509,6 +525,7 @@ impl FileState<'_, '_> {
             )
             .await;
         }
+        Ok(())
     }
 
     /// Retranslate one scope with up-to-7 preceding translated pairs as
@@ -571,7 +588,6 @@ impl FileState<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::projects::Tone;
     use crate::events::{FileStateKind, RunEvent};
     use crate::glossary::model::Glossary;
     use crate::llm::service::LlmService;
@@ -613,6 +629,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("ep01.ass");
         std::fs::write(&input, source).unwrap();
+        let prompts = crate::prompts::TranslationPrompts::defaults(
+            &LanguagePair::from_codes("zh", "en").unwrap(),
+            crate::config::projects::Tone::Standard,
+        );
 
         let result = translate_file(FileJob {
             input: input.clone(),
@@ -620,8 +640,7 @@ mod tests {
             svc: &svc,
             glossary: &Glossary::default(),
             pair: LanguagePair::from_codes("zh", "en").unwrap(),
-            tone: Tone::Standard,
-            template_variant: None,
+            prompts: &prompts,
             batch_limit: Some(100),
             cancel: CancellationToken::new(),
             tx: tx.clone(),
@@ -776,7 +795,7 @@ mod tests {
         let src = ass_source(&["你好", "再见"]);
         let (result, _, driver, _dir) = run_pipeline(
             &src,
-            vec![Err(crate::llm::error::LlmError::Http { status: 401, body: "no".into() })],
+            vec![Err(crate::llm::error::LlmError::Http { status: 401, body: "no".into(), retry_after: None })],
         )
         .await;
         assert!(!result.success);
@@ -852,6 +871,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dead_key_during_verify_fails_file_not_silent_clean() {
+        let src = ass_source(&["你好", "再见"]);
+        let (result, events, _, _dir) = run_pipeline(
+            &src,
+            vec![
+                Ok(ok_batch(&[(1, "Hello there friend"), (2, "Goodbye for now")])),
+                Err(crate::llm::error::LlmError::Http {
+                    status: 401,
+                    body: "dead key".into(),
+                    retry_after: None,
+                }),
+            ],
+        )
+        .await;
+        assert!(!result.success);
+        assert!(result.output_path.is_none());
+        assert!(events.iter().any(|e| matches!(
+            e,
+            RunEvent::Error { message, .. } if message.contains("verification aborted")
+        )));
+    }
+
+    #[tokio::test]
+    async fn dead_key_during_cleanup_fails_file() {
+        let src = ass_source(&["你好"]);
+        // The translated text still contains source-language characters, so the
+        // cleanup pass fires; its single request dies with 401.
+        let (result, events, _, _dir) = run_pipeline(
+            &src,
+            vec![
+                Ok(ok_batch(&[(1, "还是中文 leftover")])),
+                Err(crate::llm::error::LlmError::Http {
+                    status: 401,
+                    body: "dead".into(),
+                    retry_after: None,
+                }),
+            ],
+        )
+        .await;
+        assert!(!result.success);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            RunEvent::Error { message, .. } if message.contains("cleanup aborted")
+        )));
+    }
+
+    #[tokio::test]
     async fn cancellation_stops_between_batches() {
         let src = ass_source(&["你好", "再见"]);
         let driver = ScriptedDriver::new(vec![Ok(ok_batch(&[(1, "Hello")]))]);
@@ -862,14 +928,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("ep01.ass");
         std::fs::write(&input, &src).unwrap();
+        let prompts = crate::prompts::TranslationPrompts::defaults(
+            &LanguagePair::from_codes("zh", "en").unwrap(),
+            crate::config::projects::Tone::Standard,
+        );
         let result = translate_file(FileJob {
             input,
             file_name: "ep01.ass".into(),
             svc: &svc,
             glossary: &Glossary::default(),
             pair: LanguagePair::from_codes("zh", "en").unwrap(),
-            tone: Tone::Standard,
-            template_variant: None,
+            prompts: &prompts,
             batch_limit: Some(100),
             cancel,
             tx,
@@ -877,5 +946,32 @@ mod tests {
         .await;
         assert!(!result.success);
         assert!(result.output_path.is_none());
+    }
+
+    #[tokio::test]
+    async fn warning_file_done_carries_issues() {
+        let src = ass_source(&["很长的中文第一句？", "很长的中文第二句？"]);
+        // Empty translations make stage-1 drift fire on every verify attempt with
+        // zero verify LLM calls (same trick as verify.rs::fast_drift_stage_short_circuits),
+        // so the script is: initial batch + one full retranslation per non-final
+        // attempt, all returning empty text.
+        let empty = ok_batch(&[(1, ""), (2, "")]);
+        let mut responses = vec![Ok(empty.clone())];
+        for _ in 1..MAX_RETRANSLATION_ATTEMPTS {
+            responses.push(Ok(empty.clone()));
+        }
+        let (result, events, _, _dir) = run_pipeline(&src, responses).await;
+        assert!(result.success);
+        assert!(result.has_warnings);
+        assert!(!result.issues.is_empty());
+        let done_issues = events
+            .iter()
+            .find_map(|e| match e {
+                RunEvent::FileDone { issues, has_warnings: true, .. } => Some(issues.clone()),
+                _ => None,
+            })
+            .expect("FileDone with warnings");
+        assert_eq!(done_issues.len(), result.issues.len());
+        assert_eq!(done_issues[0].issue_type, "drift");
     }
 }

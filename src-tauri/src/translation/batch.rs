@@ -4,7 +4,6 @@
 
 use std::collections::BTreeMap;
 
-use crate::config::projects::Tone;
 use crate::glossary::model::Glossary;
 use crate::llm::service::LlmService;
 use crate::llm::LlmRequest;
@@ -23,8 +22,10 @@ pub struct BatchLine {
 #[derive(Debug, Clone)]
 pub struct BatchSettings {
     pub pair: LanguagePair,
-    pub tone: Tone,
-    pub template_variant: Option<String>,
+    /// Resolved translate.* template for the run's language pair.
+    pub template: String,
+    /// Resolved tone guideline text.
+    pub tone_text: String,
 }
 
 #[derive(Debug)]
@@ -63,12 +64,8 @@ pub async fn translate_batch(
         .map(|l| (l.id, markers::inject(l.id, l.kind, &filtered.inject_hints(&l.stripped_src))))
         .collect();
 
-    let system = prompts::system_prompt(
-        &settings.pair,
-        &filtered,
-        settings.tone,
-        settings.template_variant.as_deref(),
-    );
+    let system =
+        prompts::system_prompt(&settings.template, &settings.pair, &filtered, &settings.tone_text);
     let user = prompts::user_prompt(&marked, context);
 
     let resp = match svc.request(LlmRequest { system, user }).await {
@@ -168,7 +165,6 @@ pub async fn translate_batch_tagged(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::projects::Tone;
     use crate::glossary::model::Glossary;
     use crate::llm::service::LlmService;
     use crate::llm::test_support::ScriptedDriver;
@@ -195,8 +191,8 @@ mod tests {
     fn settings() -> BatchSettings {
         BatchSettings {
             pair: LanguagePair::from_codes("zh", "en").unwrap(),
-            tone: Tone::Standard,
-            template_variant: None,
+            template: crate::prompts::default_text(crate::prompts::PromptId::TranslateZhEn).into(),
+            tone_text: crate::prompts::default_text(crate::prompts::PromptId::ToneStandard).into(),
         }
     }
 
@@ -257,6 +253,7 @@ mod tests {
         let driver = ScriptedDriver::new(vec![Err(crate::llm::error::LlmError::Http {
             status: 401,
             body: "no".into(),
+            retry_after: None,
         })]);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
         let svc = LlmService::new(driver, 2, CancellationToken::new(), tx);
@@ -279,6 +276,24 @@ mod tests {
         let sent = driver.last_request().expect("a request was sent");
         assert!(sent.user.contains("星汉[→Xinghan]"));
         assert!(sent.system.contains("星汉 → Xinghan"));
+    }
+
+    #[tokio::test]
+    async fn custom_template_reaches_the_request() {
+        let driver = ScriptedDriver::new(vec![Ok(
+            r#"[{"id":1,"tgt":"<0001:D> Hello"}]"#.to_string(),
+        )]);
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        let svc = LlmService::new(driver.clone(), 2, CancellationToken::new(), tx);
+        let settings = BatchSettings {
+            pair: LanguagePair::from_codes("zh", "en").unwrap(),
+            template: "XCUSTOMX {GLOSSARY} {TONE}".into(),
+            tone_text: "XTONEX".into(),
+        };
+        let _ = translate_batch(&svc, &lines(&[(1, "你好")]), &Glossary::default(), &[], &settings).await;
+        let req = driver.last_request().expect("a request was sent");
+        assert!(req.system.starts_with("XCUSTOMX"), "system starts with XCUSTOMX: {:?}", req.system);
+        assert!(req.system.contains("XTONEX"), "system contains XTONEX: {:?}", req.system);
     }
 
     #[tokio::test]

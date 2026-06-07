@@ -1,5 +1,5 @@
 //! Run manager: one active run; spawns ≤concurrency file pipelines; forwards
-//! engine events to the webview; persists verify results.
+//! engine events to the webview.
 //!
 //! # tx lifecycle — why the forwarder terminates
 //!
@@ -17,7 +17,7 @@
 //!    the last file task exits and the spawner drops its `svc`.
 //!
 //! Once (1), (2) for every file, and (3) have all dropped, `rx.recv()` returns `None`
-//! and the forwarder loop exits — triggering persistence and state clear.
+//! and the forwarder loop exits — triggering state clear.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -52,7 +52,6 @@ pub struct StartArgs {
     pub tone: Tone,
     pub source_lang: String,
     pub target_lang: String,
-    pub now: i64, // webview-supplied timestamp (same convention as open_folder)
 }
 
 /// Return the active connection if it is usable. Delegates the per-connection
@@ -91,6 +90,13 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     }
 
     let pair = LanguagePair::from_codes(&args.source_lang, &args.target_lang)?;
+    // Resolve prompt templates ONCE — a running job is immune to mid-job edits;
+    // changes apply to the next run. An unreadable override fails loudly here.
+    let prompts = Arc::new(crate::prompts::TranslationPrompts::resolve(
+        &crate::prompts::overrides_dir(&app)?,
+        &pair,
+        args.tone,
+    )?);
     let folder = PathBuf::from(&args.folder);
     let glossary: Arc<Glossary> = Arc::new(load_folder_glossary(&folder).unwrap_or_default());
 
@@ -103,7 +109,7 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     *guard = Some(RunHandle { cancel: cancel.clone() });
     drop(guard);
 
-    // Forwarder: engine events → webview; collects results; persists; clears state.
+    // Forwarder: engine events → webview; clears state.
     //
     // `rx.recv()` returns None once all Sender clones are dropped. The spawner
     // holds `tx` (dropped at end of spawner body) and `svc` (which holds one
@@ -112,19 +118,8 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     // also holds `job_tx` (dropped when the task returns). So the forwarder
     // exits naturally after RunFinished is sent and all tasks have finished.
     let app_fwd = app.clone();
-    let folder_key = args.folder.clone();
-    let now = args.now;
     tauri::async_runtime::spawn(async move {
         while let Some(ev) = rx.recv().await {
-            // Persist BEFORE emitting RunFinished so that a UI handler that
-            // reads persisted verify data on this event never sees stale state.
-            if let RunEvent::RunFinished { results: ref r } = ev {
-                if !r.is_empty() {
-                    let _ = crate::config::verification::save_folder(
-                        &app_fwd, &folder_key, r, now,
-                    );
-                }
-            }
             let _ = app_fwd.emit(events::TRANSLATION_EVENT, &ev);
         }
         if let Some(state) = app_fwd.try_state::<RunState>() {
@@ -135,8 +130,6 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     // Worker spawner.
     let sem = Arc::new(Semaphore::new(concurrency as usize));
     let batch_limit = conn.batch_dialogue_limit;
-    let template_variant = conn.prompt_template.clone();
-    let tone = args.tone;
     tauri::async_runtime::spawn(async move {
         // Zip file names with task handles so a panicking task can emit a named error.
         let mut handles: Vec<(String, tauri::async_runtime::JoinHandle<FileResult>)> = Vec::new();
@@ -158,8 +151,8 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
             let job_svc = svc.clone();
             let job_glossary = glossary.clone();
             let job_pair = pair.clone();
+            let job_prompts = prompts.clone();
             let input = folder.join(&name);
-            let job_variant = template_variant.clone();
             let task_name = name.clone();
             let handle = tauri::async_runtime::spawn(async move {
                 let _permit = permit;
@@ -169,8 +162,7 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
                     svc: &job_svc,
                     glossary: &job_glossary,
                     pair: job_pair,
-                    tone,
-                    template_variant: job_variant,
+                    prompts: &job_prompts,
                     batch_limit,
                     cancel: job_cancel,
                     tx: job_tx,

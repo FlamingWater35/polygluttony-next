@@ -226,6 +226,15 @@ impl Glossary {
         }
     }
 
+    /// Drop entries whose translation fails `is_valid_translation` (empty,
+    /// whitespace-only, or absurdly long) so that a subsequent `merge_first_wins`
+    /// can restore valid originals for those keys.
+    pub(crate) fn scrub_invalid(&mut self) {
+        for c in CATEGORIES {
+            self.category_mut(c).retain(|_, v| Self::is_valid_translation(v));
+        }
+    }
+
     /// Parse an LLM extraction response: accepts `{"terms": {...}}` or a bare
     /// category object; non-string values dropped
     /// (`glossary_builder.py:375` + `glossary.py:202-220`).

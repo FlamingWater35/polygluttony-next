@@ -53,7 +53,7 @@ pub struct BuildJob {
     pub normalize: bool,
     pub personalize: bool,
     pub personalize_context: String,
-    pub template_variant: Option<String>,
+    pub prompts: crate::prompts::GlossaryPrompts,
     pub batch_limit: Option<u32>,
     pub cancel: CancellationToken,
 }
@@ -140,7 +140,9 @@ pub async fn build_glossary(
 
     // ── Reference: advisory English terminology (O11, logs for itself) ─────
     phase(&tx, GlossaryPhase::Reference, None).await;
-    let reference_terms = reference::load_or_extract(&job.folder, svc, job.batch_limit, &tx).await;
+    let reference_terms =
+        reference::load_or_extract(&job.folder, svc, job.batch_limit, &tx, &job.prompts.reference)
+            .await;
 
     // ── Extracting: all batches through the LLM, one shared system prompt ──
     let batches = glossary_batches(&all_lines, job.batch_limit);
@@ -149,10 +151,10 @@ pub async fn build_glossary(
     let _ = tx.send(GlossaryEvent::Progress { done: 0, total }).await;
 
     let system = prompts::extraction_prompt(
+        &job.prompts.extract,
         &job.world_type,
         &job.pair,
         reference_terms.as_ref(),
-        job.template_variant.as_deref(),
     );
 
     // Progress is emitted by each future ON COMPLETION (shared atomic counter)
@@ -275,7 +277,7 @@ pub async fn build_glossary(
             Some(format!("{} new terms", new_terms.count())),
         )
         .await;
-        new_terms = normalize::normalize_pass(svc, &new_terms, &tx).await;
+        new_terms = normalize::normalize_pass(svc, &new_terms, &tx, &job.prompts.normalize).await;
         // A cancel mid-normalize reports normalized=false even though some
         // categories may already have been normalized (each keeps its original
         // terms on failure, so the data is valid either way) — conservative
@@ -291,7 +293,14 @@ pub async fn build_glossary(
     if job.personalize && !aborted && !job.cancel.is_cancelled() && !result.is_empty() {
         if let Some(p_svc) = personalize_svc {
             phase(&tx, GlossaryPhase::Personalizing, None).await;
-            match personalize::personalize_pass(p_svc, &result, &job.personalize_context).await {
+            match personalize::personalize_pass(
+                p_svc,
+                &result,
+                &job.personalize_context,
+                &job.prompts.personalize,
+            )
+            .await
+            {
                 Ok(g) => {
                     result = g;
                     personalized = true;
@@ -413,7 +422,7 @@ mod tests {
             normalize: false,
             personalize: false,
             personalize_context: String::new(),
-            template_variant: None,
+            prompts: crate::prompts::GlossaryPrompts::defaults(),
             batch_limit: Some(2), // ×0.7 → 1 line per batch
             cancel,
         }
@@ -477,7 +486,7 @@ mod tests {
         write_ass(dir.path(), "e1.ass", &["一", "二"]);
         let cancel = CancellationToken::new();
         let d = ScriptedDriver::new(vec![
-            Err(LlmError::Http { status: 400, body: "bad request".into() }), // batch 1: non-retryable, one call
+            Err(LlmError::Http { status: 400, body: "bad request".into(), retry_after: None }), // batch 1: non-retryable, one call
             Ok(r#"{"characters":{"林动":"Lin Dong"}}"#.into()),              // batch 2 ok
         ]);
         let svc = svc1(d, cancel.clone());
@@ -504,7 +513,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let d = ScriptedDriver::new(vec![
             Ok(r#"{"characters":{"林动":"Lin Dong"}}"#.into()), // batch 1 ok
-            Err(LlmError::Http { status: 401, body: "bad key".into() }), // batch 2: auth, no retry
+            Err(LlmError::Http { status: 401, body: "bad key".into(), retry_after: None }), // batch 2: auth, no retry
         ]);
         let svc = svc1(d, cancel.clone());
         let (_events, s) =
@@ -532,6 +541,7 @@ mod tests {
         let d = ScriptedDriver::new(vec![Err(LlmError::Http {
             status: 401,
             body: "bad key".into(),
+            retry_after: None,
         })]);
         let svc = svc1(d, cancel.clone());
         let (_events, s) =
@@ -690,6 +700,38 @@ mod tests {
         let saved = load_folder_glossary(dir.path()).unwrap();
         assert_eq!(saved.characters.get("林动").unwrap(), "EXISTING WINS");
         assert_eq!(saved.characters.get("应欢欢").unwrap(), "Ying Huanhuan");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn custom_extract_template_reaches_the_request() {
+        // No ref/ dir and no cache → build goes straight to extraction.
+        // batch_limit 2 × 0.7 → 1 line per batch; 1 line file → 1 extraction call.
+        let dir = tempfile::tempdir().unwrap();
+        write_ass(dir.path(), "e1.ass", &["修仙第一句"]);
+        let cancel = CancellationToken::new();
+        let mut prompts = crate::prompts::GlossaryPrompts::defaults();
+        prompts.extract = "XEXTRACTX {world_type}".into();
+        let d = ScriptedDriver::new(vec![Ok(r#"{"terms":{}}"#.into())]);
+        let svc = svc1(d.clone(), cancel.clone());
+        let mut j = job(dir.path(), vec!["e1.ass".into()], cancel);
+        j.prompts = prompts;
+        let _ = run_and_collect(j, &svc, None).await;
+        let req = d.last_request().expect("extraction must have sent a request");
+        assert!(
+            req.system.starts_with("XEXTRACTX"),
+            "custom extract template must reach the wire: {:?}",
+            req.system
+        );
+        assert!(
+            !req.system.contains("{world_type}"),
+            "world_type placeholder must be filled in custom template: {:?}",
+            req.system
+        );
+        assert!(
+            req.system.contains("xianxia"),
+            "world value 'xianxia' must appear in custom template: {:?}",
+            req.system
+        );
     }
 
     #[tokio::test(start_paused = true)]

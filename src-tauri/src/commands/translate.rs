@@ -21,9 +21,8 @@ pub async fn start_translation(
     tone: Tone,
     source_lang: String,
     target_lang: String,
-    now: i64,
 ) -> AppResult<()> {
-    run::start(app, StartArgs { folder, files, tone, source_lang, target_lang, now }).await
+    run::start(app, StartArgs { folder, files, tone, source_lang, target_lang }).await
 }
 
 #[tauri::command]
