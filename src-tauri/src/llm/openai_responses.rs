@@ -137,7 +137,8 @@ mod tests {
             driver: Driver::OpenaiResponses, base_url: base.into(), api_key: "k".into(),
             model: "gpt-5.2".into(), max_tokens: Some(16), batch_dialogue_limit: None,
             timeout: Some(10), connect_timeout: None, concurrency: None,
-            thinking_enabled: None, thinking_budget: None, web_search: Some(false),
+            thinking_enabled: None, thinking_budget: None,
+            thinking_glossary_budget: None, web_search: Some(false),
             thinking_glossary_norm_budget: None,
         }
     }

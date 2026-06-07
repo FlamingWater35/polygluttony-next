@@ -47,6 +47,10 @@ pub struct Connection {
     pub thinking_enabled: Option<bool>,
     #[serde(default)]
     pub thinking_budget: Option<u32>,
+    /// Thinking budget for glossary extraction calls (Glossary thinking).
+    /// `None` on legacy configs → engine falls back to `thinking_budget`.
+    #[serde(default)]
+    pub thinking_glossary_budget: Option<u32>,
     #[serde(default)]
     pub web_search: Option<bool>,
     #[serde(default)]
@@ -70,6 +74,21 @@ pub struct AppConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn glossary_budget_field_roundtrips_and_defaults_none() {
+        // Present in JSON → parsed.
+        let json = r#"{
+            "driver":"anthropic","base_url":"https://x","model":"m",
+            "thinking_glossary_budget":12000
+        }"#;
+        let c: Connection = serde_json::from_str(json).unwrap();
+        assert_eq!(c.thinking_glossary_budget, Some(12000));
+        // Absent (every pre-existing stored config) → None, not an error.
+        let legacy: Connection =
+            serde_json::from_str(r#"{"driver":"openai","base_url":"u","model":"m"}"#).unwrap();
+        assert_eq!(legacy.thinking_glossary_budget, None);
+    }
 
     #[test]
     fn connection_tolerates_removed_prompt_template_field() {

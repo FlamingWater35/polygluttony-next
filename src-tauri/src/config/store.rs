@@ -135,8 +135,8 @@ mod tests {
             driver: Driver::Openai, base_url: "u".into(), api_key: "k".into(),
             model: "m".into(), max_tokens: None, batch_dialogue_limit: None,
             timeout: None, connect_timeout: None, concurrency: None,
-            thinking_enabled: None, thinking_budget: None, web_search: None,
-            thinking_glossary_norm_budget: None,
+            thinking_enabled: None, thinking_budget: None, thinking_glossary_budget: None,
+            web_search: None, thinking_glossary_norm_budget: None,
         }
     }
 
@@ -230,7 +230,7 @@ mod tests {
             api_key: String::new(), model: "m".into(), max_tokens: None,
             batch_dialogue_limit: None, timeout: None, connect_timeout: None,
             concurrency: None, thinking_enabled: None, thinking_budget: None,
-            web_search: None,
+            thinking_glossary_budget: None, web_search: None,
             thinking_glossary_norm_budget: None,
         };
         // No key, non-local URL → not usable.
