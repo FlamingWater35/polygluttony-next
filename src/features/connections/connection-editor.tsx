@@ -296,6 +296,27 @@ export function ConnectionEditor({
           The web-lookup step needs a model that can search the web (e.g. OpenAI/Gemini).
         </HelpText>
 
+        <label className="mb-1 mt-2 flex items-center gap-2 text-[11.5px]">
+          <Checkbox
+            checked={current.driver === "openai-responses" && !!current.web_search}
+            disabled={current.driver !== "openai-responses"}
+            onCheckedChange={(c) =>
+              setValue("web_search", c === true, { shouldDirty: true })
+            }
+          />
+          Web search
+        </label>
+        {current.driver === "openai-responses" ? (
+          <HelpText>
+            Allows the model to search the web — used by &quot;look up names
+            online&quot;.
+          </HelpText>
+        ) : (
+          <p className="mb-2 text-[11px] text-[color:var(--color-alert)]">
+            ⚠ Not supported by this provider — available on OpenAI connections.
+          </p>
+        )}
+
         <AdvancedSettingsSection
           form={form}
           footer={
