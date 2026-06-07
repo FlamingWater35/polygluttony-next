@@ -21,7 +21,7 @@ interface RailItem {
 }
 
 const ITEMS: RailItem[] = [
-  { to: "/project", label: "Project", icon: Folder, group: "workflow", needsFolder: true },
+  { to: "/project", label: "Project", icon: Folder, group: "workflow" },
   { to: "/glossary", label: "Glossary", icon: BookOpen, group: "workflow", needsFolder: true },
   { to: "/translate", label: "Translate", icon: Play, group: "workflow", needsFolder: true },
   { to: "/connections", label: "Connections", icon: Lightning, group: "setup" },
@@ -53,7 +53,13 @@ export function NavRail() {
   const render = (item: RailItem) => {
     const hint = gateHint(item);
     const disabled = hint !== null;
-    const active = pathname.startsWith(item.to);
+    // Project is dual-role: it opens Welcome ("/") until a folder is picked, the
+    // Project view after — and highlights on both so they read as one place.
+    const isProject = item.to === "/project";
+    const to = isProject && !workdir ? "/" : item.to;
+    const active = isProject
+      ? pathname === "/" || pathname.startsWith("/project")
+      : pathname.startsWith(item.to);
     const Icon = item.icon;
     const body = (
       <div
@@ -94,7 +100,7 @@ export function NavRail() {
       );
     }
     return (
-      <Link key={item.to} to={item.to as never}>
+      <Link key={item.to} to={to as never}>
         {body}
       </Link>
     );
