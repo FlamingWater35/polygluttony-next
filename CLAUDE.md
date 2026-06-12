@@ -68,14 +68,17 @@ authoritative for *what the UI does and how each action binds to the engine.*
 
 - **Information architecture:** a **single window with a left icon rail** swapping
   focused views — **not tabs, not a wizard.** Views: **Project, Glossary, Translate,
-  Verify, Connections, Settings, Help**, plus a pre-project **Welcome** screen and the
-  **shell** (rail + header + status bar).
-- **Built so far:** the **shell** (icon rail + header + status bar, `theme.py` palette,
-  **Phosphor** icons), **Connections**, and the **Welcome + Project** (folder-pickup)
-  views. Remaining workflow views — **Glossary, Translate, Verify** — plus **Settings**
-  and **Help** are gated placeholders, built in later steps. The engine grows with each
-  view; per-step specs/plans live in **`docs/superpowers/{specs,plans}/`** (the
-  authoritative record of what's done and what's next).
+  Connections, Settings, Help**, plus a pre-project **Welcome** screen and the
+  **shell** (rail + header + status bar). (The spec's separate **Verify** view was
+  dropped — verification runs inside Translate.)
+- **Built so far:** every view except **Help** (still a "Coming soon" placeholder):
+  the **shell**, **Welcome + Project** (folder pickup), **Connections** (presets +
+  Test), **Glossary** (build / normalize / reference / editor), **Translate** (run
+  + embedded verification with per-file issue fold-outs), and **Settings** (the
+  prompt-template editor). **Verify no longer exists as a window** — it ships
+  inside the Translate view. The engine grows with each view; per-step specs/plans
+  live in **`docs/superpowers/{specs,plans}/`** (the authoritative record of what's
+  done and what's next).
 - Each window doc has an **Interactions table** citing the precise Python `file:line` +
   function each control binds to. `03-operations-and-flows.md` defines the 21 logical
   operations (O1–O21), the **progress/log/state event contract** (`core/progress.py`:
@@ -109,7 +112,7 @@ src-tauri/src/
   ass/ llm/ glossary/ validation/ translation/ utils/   # the engine (ports of subs_translator/*)
 src/
   routes/     # TanStack file-based routes — the icon-rail views
-  features/   # per-view UI: connections, welcome, project (built); glossary, translate, verify, settings, help (later)
+  features/   # per-view UI: connections, welcome, project, glossary, translate, settings (built); help (later)
   components/  lib/  stores/  hooks/
   types/generated/   # ts-rs output — DO NOT edit by hand; `bun gen:bindings`
 ```
