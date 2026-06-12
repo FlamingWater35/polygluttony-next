@@ -101,6 +101,7 @@ export function ConnectionEditor({
   // Only true when the user explicitly selected the Custom preset; a blank new
   // form sends detect=false — same behaviour the old "__detect__" sentinel had.
   const isCustom = presetKey === "custom";
+  const webSearchSupported = current.driver === "openai-responses";
   const curated = useMemo(
     () => presets.find((p) => p.key === presetKey)?.models ?? [],
     [presets, presetKey],
@@ -325,27 +326,28 @@ export function ConnectionEditor({
           currently only OpenAI (Responses API) with “Web search” enabled below.
         </HelpText>
 
-        <label className="mb-1 mt-2 flex items-center gap-2 text-[11.5px]">
-          <Checkbox
-            checked={current.driver === "openai-responses" && !!current.web_search}
-            disabled={current.driver !== "openai-responses"}
-            onCheckedChange={(c) =>
-              setValue("web_search", c === true, { shouldDirty: true })
-            }
-          />
-          Web search
-        </label>
-        {current.driver === "openai-responses" ? (
+        <div className={webSearchSupported ? "" : "pointer-events-none opacity-50"}>
+          <label className="mb-1 mt-2 flex items-center gap-2 text-[11.5px]">
+            <Checkbox
+              checked={webSearchSupported && !!current.web_search}
+              disabled={!webSearchSupported}
+              onCheckedChange={(c) =>
+                setValue("web_search", c === true, { shouldDirty: true })
+              }
+            />
+            Web search
+          </label>
           <HelpText>
             Allows the model to search the web — used by &quot;look up names
             online&quot;.
           </HelpText>
-        ) : (
-          <p className="mb-2 text-[11px] text-[color:var(--color-alert)]">
+        </div>
+        {!webSearchSupported ? (
+          <p className="mb-2 mt-1 text-[11px] text-[color:var(--color-alert)]">
             ⚠ Not supported by this provider — available on OpenAI (Responses
             API) connections.
           </p>
-        )}
+        ) : null}
 
         <AdvancedSettingsSection form={form} />
         <ExtendedThinkingSection form={form} />
