@@ -49,6 +49,7 @@ pub fn run() {
             commands::rename_connection,
             commands::set_active_connection,
             commands::set_personalization_connection,
+            commands::clear_personalization_connection,
             commands::first_run_status,
             commands::list_presets,
             commands::test_connection,

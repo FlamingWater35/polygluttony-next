@@ -53,6 +53,10 @@ export function useConnectionMutations() {
       mutationFn: ipc.setPersonalizationConnection,
       onSuccess: invalidate,
     }),
+    clearPersonalization: useMutation({
+      mutationFn: ipc.clearPersonalizationConnection,
+      onSuccess: invalidate,
+    }),
     test: useMutation({
       mutationFn: ({ connection, detect }: { connection: Connection; detect: boolean }) =>
         ipc.testConnection(connection, detect),

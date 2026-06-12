@@ -32,6 +32,11 @@ pub fn set_personalization(cfg: &mut AppConfig, name: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Clear the personalization (web-lookup) connection reference.
+pub fn clear_personalization(cfg: &mut AppConfig) {
+    cfg.personalization_model = None;
+}
+
 pub fn remove_connection(cfg: &mut AppConfig, name: &str) -> AppResult<()> {
     if cfg.active_connection == name {
         return Err(AppError::Other(
@@ -188,6 +193,16 @@ mod tests {
         let mut cfg = default_config(); // personalization = "openai", active = "anthropic"
         assert_eq!(cfg.personalization_model.as_deref(), Some("openai"));
         remove_connection(&mut cfg, "openai").unwrap();
+        assert_eq!(cfg.personalization_model, None);
+    }
+
+    #[test]
+    fn clear_personalization_unsets_the_reference() {
+        let mut cfg = default_config(); // personalization = "openai"
+        assert_eq!(cfg.personalization_model.as_deref(), Some("openai"));
+        clear_personalization(&mut cfg);
+        assert_eq!(cfg.personalization_model, None);
+        clear_personalization(&mut cfg); // idempotent
         assert_eq!(cfg.personalization_model, None);
     }
 

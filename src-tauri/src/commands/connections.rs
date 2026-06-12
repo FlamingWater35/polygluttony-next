@@ -79,6 +79,13 @@ pub fn set_personalization_connection(app: AppHandle, name: String) -> AppResult
 }
 
 #[tauri::command]
+pub fn clear_personalization_connection(app: AppHandle) -> AppResult<()> {
+    let mut cfg = store::load(&app)?;
+    store::clear_personalization(&mut cfg);
+    store::save(&app, &cfg)
+}
+
+#[tauri::command]
 pub fn first_run_status(app: AppHandle) -> AppResult<FirstRunStatus> {
     Ok(FirstRunStatus {
         has_usable_connection: store::has_usable_connection(&store::load(&app)?),

@@ -54,6 +54,7 @@ export function ConnectionEditor({
   onSave,
   onSetActive,
   onSetPersonalization,
+  onClearPersonalization,
   onRemove,
   onRename,
   onTest,
@@ -67,6 +68,7 @@ export function ConnectionEditor({
   onSave: (name: string, c: Connection) => Promise<void> | void;
   onSetActive: (name: string) => void;
   onSetPersonalization: (name: string) => void;
+  onClearPersonalization: () => void;
   onRemove: (name: string) => void;
   onRename: (oldName: string, newName: string) => Promise<void> | void;
   onTest: (c: Connection, detect: boolean) => Promise<TestResult>;
@@ -311,7 +313,10 @@ export function ConnectionEditor({
         <label className="mb-2 flex items-center gap-2 text-[11.5px]">
           <Checkbox
             checked={isPersonalization}
-            onCheckedChange={() => onSetPersonalization(name)}
+            onCheckedChange={(c) => {
+              if (c === true) onSetPersonalization(name);
+              else if (isPersonalization) onClearPersonalization();
+            }}
           />
           Use this connection for &quot;look up names online&quot;
         </label>

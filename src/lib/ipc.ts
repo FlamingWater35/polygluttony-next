@@ -48,6 +48,9 @@ export const ipc = {
   /** Set the personalization (web-lookup) connection. */
   setPersonalizationConnection: (name: string) =>
     invoke<void>("set_personalization_connection", { name }),
+  /** Clear the personalization (web-lookup) connection. */
+  clearPersonalizationConnection: () =>
+    invoke<void>("clear_personalization_connection"),
   /** O5 — test a connection. `detect: true` probes the endpoint's API format (Custom preset). */
   testConnection: (connection: Connection, detect: boolean) =>
     invoke<TestResult>("test_connection", { connection, detect }),

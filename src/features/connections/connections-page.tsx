@@ -61,6 +61,7 @@ export function ConnectionsPage() {
               })
             }
             onSetPersonalization={(name) => m.setPersonalization.mutate(name)}
+            onClearPersonalization={() => m.clearPersonalization.mutate()}
             onRemove={(name) => {
               m.remove.mutate(name, {
                 onSuccess: () => toast.success(`Removed “${name}”`),
