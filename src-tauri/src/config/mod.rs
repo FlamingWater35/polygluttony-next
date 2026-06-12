@@ -100,6 +100,40 @@ impl Connection {
         }
         None
     }
+
+    /// Save-time validation mirroring the UI's hard-block rules
+    /// (`advanced-sections.tsx::budgetValidate`): when thinking is enabled on
+    /// an Anthropic connection, each of the three stage budgets must be
+    /// present, at least 1024 tokens (the Anthropic API floor), and below
+    /// `max_tokens` (skipped when `max_tokens` is unset). Gated on
+    /// `Driver::Anthropic` — thinking values persist across driver switches
+    /// by design, so stale values on a non-Anthropic connection must never
+    /// block a save. (Integer-ness is structural: the fields are `u32`.)
+    pub fn thinking_budget_save_error(&self) -> Option<String> {
+        if self.driver != Driver::Anthropic || !self.thinking_enabled.unwrap_or(false) {
+            return None;
+        }
+        const MIN_BUDGET: u32 = 1024;
+        let budgets = [
+            ("translate thinking", self.thinking_budget),
+            ("glossary thinking", self.thinking_glossary_budget),
+            ("normalization thinking", self.thinking_glossary_norm_budget),
+        ];
+        for (label, value) in budgets {
+            let Some(v) = value else {
+                return Some(format!("{label} budget is required when thinking is enabled"));
+            };
+            if v < MIN_BUDGET {
+                return Some(format!("{label} budget must be at least {MIN_BUDGET} tokens"));
+            }
+            if let Some(max) = self.max_tokens {
+                if v >= max {
+                    return Some(format!("{label} budget must be less than max tokens ({max})"));
+                }
+            }
+        }
+        None
+    }
 }
 
 /// Top-level persisted configuration.
@@ -170,6 +204,49 @@ mod tests {
         other.driver = Driver::Openai;
         other.thinking_budget = None;
         assert_eq!(other.thinking_config_error(), None);
+    }
+
+    #[test]
+    fn thinking_budget_save_error_enforces_ui_hard_block_rules() {
+        // The shared fixture's norm budget (24000) exceeds max_tokens (16000) —
+        // exactly the kind of config this validation must reject.
+        assert!(thinking_conn()
+            .thinking_budget_save_error()
+            .unwrap()
+            .contains("less than max tokens"));
+
+        // A fully valid Anthropic thinking config passes.
+        let mut ok = thinking_conn();
+        ok.thinking_glossary_norm_budget = Some(8000);
+        assert_eq!(ok.thinking_budget_save_error(), None);
+
+        // Missing stage budget.
+        let mut c = ok.clone();
+        c.thinking_glossary_budget = None;
+        assert!(c.thinking_budget_save_error().unwrap().contains("glossary thinking"));
+
+        // Below the 1024 API floor.
+        let mut c = ok.clone();
+        c.thinking_budget = Some(512);
+        assert!(c.thinking_budget_save_error().unwrap().contains("1024"));
+
+        // No max_tokens → upper-bound check skipped.
+        let mut c = ok.clone();
+        c.max_tokens = None;
+        c.thinking_budget = Some(999_999);
+        assert_eq!(c.thinking_budget_save_error(), None);
+
+        // Non-Anthropic drivers skip validation (stale values persist by design).
+        let mut c = thinking_conn();
+        c.driver = Driver::Openai;
+        assert_eq!(c.thinking_budget_save_error(), None);
+
+        // Thinking disabled (or unset) skips validation.
+        let mut c = thinking_conn();
+        c.thinking_enabled = Some(false);
+        assert_eq!(c.thinking_budget_save_error(), None);
+        c.thinking_enabled = None;
+        assert_eq!(c.thinking_budget_save_error(), None);
     }
 
     #[test]

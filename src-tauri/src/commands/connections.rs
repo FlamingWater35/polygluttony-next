@@ -45,6 +45,9 @@ pub fn read_connection(app: AppHandle, name: String) -> AppResult<Connection> {
 
 #[tauri::command]
 pub fn save_connection(app: AppHandle, name: String, connection: Connection) -> AppResult<()> {
+    if let Some(msg) = connection.thinking_budget_save_error() {
+        return Err(AppError::Other(msg));
+    }
     let mut cfg = store::load(&app)?;
     store::upsert_connection(&mut cfg, &name, connection);
     store::save(&app, &cfg)
