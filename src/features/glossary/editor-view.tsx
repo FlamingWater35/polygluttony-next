@@ -31,6 +31,7 @@ import { DiffReview } from "./diff-review";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SectionHelp } from "@/components/section-help";
 
 // Category keys — keep in sync with `CATEGORIES` in src-tauri/src/glossary/model.rs.
 const CATEGORIES = [
@@ -276,6 +277,35 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
       ) : null}
 
       <div className="flex-1 overflow-auto p-5">
+        <SectionHelp title="What the six categories mean">
+          <ul className="ml-1 space-y-1 text-[11.5px] text-muted-foreground">
+            <li>
+              <span className="font-medium text-foreground">Characters</span> — people: names,
+              titles, forms of address.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Cultivation</span> — realms, stages, and
+              energy systems (xianxia/wuxia).
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Skills</span> — named techniques, moves,
+              and abilities.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Locations</span> — places: sects,
+              cities, realms, landmarks.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Items</span> — objects: weapons, pills,
+              artifacts, treasures.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Organizations</span> — groups: clans,
+              sects, factions, dynasties.
+            </li>
+          </ul>
+        </SectionHelp>
+
         {/* Search + add-term row */}
         <div className="mb-4 flex items-center gap-2">
           <div className="relative w-56 shrink-0">

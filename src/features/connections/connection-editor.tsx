@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { Eye, EyeSlash, Check, X } from "@phosphor-icons/react";
 import type { Connection } from "@/types/generated/Connection";
 import type { Preset } from "@/types/generated/Preset";
 import type { TestResult } from "@/types/generated/TestResult";
@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SetupField } from "@/components/setup-field";
 import { HelpText } from "@/components/help-text";
+import { Spinner } from "@/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ModelCombobox } from "./model-combobox";
 import {
   AdvancedSettingsSection,
@@ -283,34 +285,6 @@ export function ConnectionEditor({
           </button>
         </SetupField>
 
-        <SetupField
-          label="Test"
-          help={
-            <HelpText>
-              Verifies your API key and that the selected model responds.
-            </HelpText>
-          }
-        >
-          <Button type="button" variant="secondary" onClick={runTest}>
-            Test connection
-          </Button>
-          {testState === "testing" ? (
-            <p className="mt-1 text-[11px] text-muted-foreground">Testing…</p>
-          ) : null}
-          {typeof testState === "object" ? (
-            <p
-              className={
-                "mt-1 text-[11px] " +
-                (testState.ok
-                  ? "text-[color:var(--color-success)]"
-                  : "text-[color:var(--color-danger)]")
-              }
-            >
-              {testState.message}
-            </p>
-          ) : null}
-        </SetupField>
-
         <label className="mb-2 flex items-center gap-2 text-[11.5px]">
           <Checkbox
             checked={isPersonalization}
@@ -377,10 +351,56 @@ export function ConnectionEditor({
             Set as active
           </Button>
         ) : null}
+        <TestResultIndicator state={testState} />
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={runTest}
+          disabled={testState === "testing"}
+        >
+          Test connection
+        </Button>
         <Button type="submit" disabled={!canSave}>
           {formState.isSubmitting ? "Saving…" : "Save"}
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Test outcome shown to the left of the "Test connection" button:
+ * a spinner while testing, a green check on success, or a clickable red
+ * cross whose tooltip reveals the error message.
+ */
+function TestResultIndicator({ state }: { state: "idle" | "testing" | TestResult }) {
+  if (state === "idle") return null;
+  if (state === "testing") return <Spinner className="text-muted-foreground" />;
+  if (state.ok) {
+    return (
+      <Check
+        weight="bold"
+        aria-label="Connection OK"
+        className="size-4 text-[color:var(--color-success)]"
+      />
+    );
+  }
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Connection failed — show error"
+            className="flex size-5 items-center justify-center rounded-full text-[color:var(--color-danger)] hover:bg-[color:var(--color-bg-hover)]"
+          >
+            <X weight="bold" className="size-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs whitespace-pre-wrap">
+          {state.message}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

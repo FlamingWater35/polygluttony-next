@@ -1,8 +1,8 @@
 import {
   BookOpen,
   Folder,
-  Gear,
   Lightning,
+  NotePencil,
   Play,
   Question,
   type Icon,
@@ -25,7 +25,7 @@ const ITEMS: RailItem[] = [
   { to: "/glossary", label: "Glossary", icon: BookOpen, group: "workflow", needsFolder: true },
   { to: "/translate", label: "Translate", icon: Play, group: "workflow", needsFolder: true },
   { to: "/connections", label: "Connections", icon: Lightning, group: "setup" },
-  { to: "/settings", label: "Settings", icon: Gear, group: "setup" },
+  { to: "/prompts", label: "Prompts", icon: NotePencil, group: "setup" },
   { to: "/help", label: "Help", icon: Question, group: "setup" },
 ];
 
@@ -107,12 +107,10 @@ export function NavRail() {
   };
 
   return (
-    <nav className="flex w-20 flex-col items-center gap-1 border-r border-border bg-[color:var(--sidebar)] py-3">
+    <nav className="flex h-full w-20 flex-col items-center gap-1 border-r border-border bg-[color:var(--sidebar)] py-3">
       {workflow.map(render)}
-      <div className="my-1 h-px w-10 bg-border" />
-      {render(setup[0])}
       <div className="flex-1" />
-      {setup.slice(1).map(render)}
+      {setup.map(render)}
     </nav>
   );
 }

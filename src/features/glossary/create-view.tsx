@@ -96,6 +96,11 @@ export function CreateView({ view }: { view: ProjectView }) {
 
       <div className="flex-1 overflow-auto p-5 flex flex-col gap-4">
 
+        <HelpText>
+          A glossary is your show’s name &amp; term dictionary — e.g. it keeps 张伟 as “Zhang Wei”
+          and 灵气 as “spiritual energy” in every episode, instead of changing each time.
+        </HelpText>
+
         {/* Error surfacing — hard requirement: failed/empty build returns here, user MUST see why */}
         {error ? (
           <p className="text-sm text-[color:var(--color-danger)]">{error}</p>

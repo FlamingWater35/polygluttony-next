@@ -11,6 +11,8 @@ import { useTranslationRun } from "@/stores/translation-store";
 import type { FileStateKind } from "@/types/generated/FileStateKind";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
+import { HelpText } from "@/components/help-text";
+import { SectionHelp } from "@/components/section-help";
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -230,8 +232,10 @@ export function TranslatePage() {
         }
       />
 
-      {/* Scrollable body */}
-      <div className="flex-1 overflow-auto p-5 flex flex-col gap-4">
+      {/* Scrollable body. Plain block (not a flex column): a flex child with
+          overflow-hidden — the table wrapper — would otherwise be shrunk to fit
+          and clip its rows instead of letting the body scroll. */}
+      <div className="min-h-0 flex-1 overflow-auto p-5 space-y-4">
 
         {/* Estimate banner */}
         {selected.length > 0 ? (
@@ -248,6 +252,11 @@ export function TranslatePage() {
             Select files below to see an estimate.
           </div>
         )}
+
+        <HelpText>
+          Polygluttony translates each file, then checks its own work. Files that need a look turn
+          amber — click one to see the exact issues.
+        </HelpText>
 
         {/* Completion summary */}
         {summaryEl}
@@ -361,6 +370,17 @@ export function TranslatePage() {
             </tbody>
           </table>
         </div>
+
+        <SectionHelp title="What the automatic checks look for">
+          <ul className="ml-1 list-disc space-y-1 pl-4 text-[11.5px] text-muted-foreground">
+            <li>Drift — the translation wandering off the original meaning.</li>
+            <li>Dropped or merged lines.</li>
+            <li>Terms that don’t match your glossary.</li>
+          </ul>
+          <p className="mt-1.5 text-[11.5px] text-muted-foreground">
+            These are flagged as issues to review — there’s no quality score.
+          </p>
+        </SectionHelp>
 
         {/* Overall progress bar (while running) */}
         {running && tableRows.length > 0 ? (

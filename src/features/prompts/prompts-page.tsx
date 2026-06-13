@@ -20,7 +20,7 @@ import { usePrompts, usePromptText, usePromptMutations } from "./use-prompts";
 import { PromptList } from "./prompt-list";
 import { PromptEditor } from "./prompt-editor";
 
-export function SettingsPage() {
+export function PromptsPage() {
   const { data: prompts } = usePrompts();
   const m = usePromptMutations();
   const [selected, setSelected] = useState<PromptId | null>(null);
@@ -62,7 +62,7 @@ export function SettingsPage() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        title="Settings"
+        title="Prompts"
         description="Customize the prompts sent to the AI. Restore any prompt to its default at any time."
       />
       <div className="flex min-h-0 flex-1">

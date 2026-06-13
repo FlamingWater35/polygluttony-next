@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { EmptyState } from "@/components/empty-state";
+import { HelpPage } from "@/features/help/help-page";
 
 export const Route = createFileRoute("/help")({
-  component: () => <EmptyState title="Help" description="Coming soon." />,
+  component: HelpPage,
 });

@@ -39,7 +39,7 @@ export function WelcomePage() {
     <div className="flex h-full flex-col items-center justify-center gap-6 p-10">
       <div className="flex flex-col items-center gap-1 text-center">
         <Translate weight="fill" className="size-10 text-primary" />
-        <h1 className="text-[22px] font-semibold text-foreground">Subs Translator</h1>
+        <h1 className="text-[22px] font-semibold text-foreground">Polygluttony</h1>
         <p className="text-sm text-muted-foreground">
           LLM-powered subtitle translation for donghua &amp; anime.
         </p>

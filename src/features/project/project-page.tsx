@@ -118,7 +118,12 @@ export function ProjectPage() {
           {showWorld ? (
             <SetupField
               label="World type"
-              help={<HelpText>Tunes how names &amp; cultivation terms are extracted.</HelpText>}
+              help={
+                <HelpText>
+                  Sets which terms to prioritize — e.g. xianxia favors cultivation terms like 金丹 →
+                  “Golden Core”. Auto-detected; change it if the guess is off.
+                </HelpText>
+              }
             >
               <select
                 className={SELECT_CLS}
@@ -145,7 +150,15 @@ export function ProjectPage() {
             </SetupField>
           ) : null}
 
-          <SetupField label="Tone" help={<HelpText>The register of the dialogue.</HelpText>}>
+          <SetupField
+            label="Tone"
+            help={
+              <HelpText>
+                How the dialogue reads — e.g. “standard” for everyday speech, “wuxia” for sweeping
+                martial-arts lines.
+              </HelpText>
+            }
+          >
             <select
               className={SELECT_CLS}
               value={prefs.tone}
