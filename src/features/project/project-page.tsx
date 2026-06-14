@@ -140,7 +140,7 @@ export function ProjectPage() {
                   persist({ ...prefs, world_override: nextWorld, tone });
                 }}
               >
-                {WORLDS.map((w) => (
+                {[...WORLDS].sort().map((w) => (
                   <option key={w} value={w}>
                     {w}
                     {!prefs.world_override && w === view.detected_world ? " (auto-detected)" : ""}
@@ -164,7 +164,7 @@ export function ProjectPage() {
               value={prefs.tone}
               onChange={(e) => persist({ ...prefs, tone: e.target.value as Tone })}
             >
-              {TONES.map((t) => (
+              {[...TONES].sort().map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
