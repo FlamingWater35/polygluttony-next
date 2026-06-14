@@ -153,15 +153,27 @@ pub struct GlossaryBuildSummary {
     pub diff: crate::glossary::diff::GlossaryDiff,
 }
 
+/// One term surfaced by a single extraction batch — fuel for the live build
+/// console (terms streaming into their category lanes as batches land).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct TermHit {
+    pub category: String,
+    pub source: String,
+    pub target: String,
+}
+
 /// Everything the UI hears on `GLOSSARY_EVENT`. `Error` is terminal-without-
 /// result (e.g. final save IO failure); pre-flight failures surface as command
-/// errors, not events. `FileChanged` comes from the O15 watcher.
+/// errors, not events. `FileChanged` comes from the O15 watcher. `Terms` streams
+/// each batch's newly-found terms during extraction (some batches yield none).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[ts(export, export_to = "../../src/types/generated/")]
 pub enum GlossaryEvent {
     Phase { phase: GlossaryPhase, detail: Option<String> },
     Progress { done: u32, total: u32 },
+    Terms { batch: u32, hits: Vec<TermHit> },
     Log { level: LogLevel, message: String },
     Done { summary: GlossaryBuildSummary },
     Error { message: String },

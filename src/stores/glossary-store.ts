@@ -32,6 +32,9 @@ interface GlossaryRunStore {
   phaseDetail: string | null
   done: number
   total: number
+  /** Live extraction terms streaming in per batch (category key → terms). */
+  glossTerms: Record<string, { source: string; target: string }[]>
+  glossTermCount: number
   logs: GlossaryLogLine[]
   summary: GlossaryBuildSummary | null
   lastDiff: GlossaryDiff | null
@@ -59,6 +62,8 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
   phaseDetail: null,
   done: 0,
   total: 0,
+  glossTerms: {},
+  glossTermCount: 0,
   logs: [],
   summary: null,
   lastDiff: null,
@@ -79,6 +84,8 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
       phaseDetail: null,
       done: 0,
       total: 0,
+      glossTerms: {},
+      glossTermCount: 0,
       logs: [],
       error: null,
       summary: op === "build" ? null : s.summary,
@@ -110,6 +117,14 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
               e.done === 0 || e.total !== s.total ? e.done : Math.max(s.done, e.done),
             total: e.total,
           }
+        case "terms": {
+          // Stream each batch's newly-found terms into their category lanes.
+          const next: Record<string, { source: string; target: string }[]> = { ...s.glossTerms }
+          for (const h of e.hits) {
+            next[h.category] = [...(next[h.category] ?? []), { source: h.source, target: h.target }]
+          }
+          return { glossTerms: next, glossTermCount: s.glossTermCount + e.hits.length }
+        }
         case "log":
           return {
             logs: [
@@ -155,6 +170,7 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
   reset: () =>
     set({
       busy: null, folder: null, phase: null, phaseDetail: null, done: 0, total: 0,
+      glossTerms: {}, glossTermCount: 0,
       logs: [], summary: null, lastDiff: null, error: null,
       opDetail: null, reviewOpen: false, lastImport: null,
     }),

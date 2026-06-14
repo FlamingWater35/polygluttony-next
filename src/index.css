@@ -174,3 +174,4 @@
 @keyframes sig-shimmer { 0%{background-position:120% 0;} 100%{background-position:-120% 0;} }
 @keyframes sig-sweep { 0%{transform:translateX(-100%);opacity:.9;} 100%{transform:translateX(100%);opacity:0;} }
 @keyframes sig-flow { 0%{background-position:0 0;} 100%{background-position:34px 0;} }
+@keyframes gloss-pop { 0%{opacity:0;transform:translateY(8px) scale(.6);} 100%{opacity:1;transform:none;} }

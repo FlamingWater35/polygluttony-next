@@ -217,7 +217,25 @@ pub async fn build_glossary(
                 // Per-batch count BEFORE cross-batch dedupe (Python parity).
                 let count = batch_glossary.count() as u32;
                 terms_extracted += count;
+                // Live console: the terms THIS batch newly contributes (keys not
+                // already seen) — what merge_first_wins is about to add. Computed
+                // pre-merge so the running tally tracks real additions, not dupes.
+                let mut hits: Vec<crate::events::TermHit> = Vec::new();
+                for c in crate::glossary::model::CATEGORIES {
+                    for (src, tgt) in batch_glossary.category(c) {
+                        if !new_terms.has_key(src) {
+                            hits.push(crate::events::TermHit {
+                                category: c.to_string(),
+                                source: src.clone(),
+                                target: tgt.clone(),
+                            });
+                        }
+                    }
+                }
                 new_terms.merge_first_wins(&batch_glossary);
+                if !hits.is_empty() {
+                    let _ = tx.send(GlossaryEvent::Terms { batch: n, hits }).await;
+                }
                 batches_processed += 1;
                 // Crash-safe incremental save: always merged-with-existing
                 // (the Python bug wrote new-terms-only), never an empty file.

@@ -2,10 +2,12 @@
 import type { GlossaryBuildSummary } from "./GlossaryBuildSummary";
 import type { GlossaryPhase } from "./GlossaryPhase";
 import type { LogLevel } from "./LogLevel";
+import type { TermHit } from "./TermHit";
 
 /**
  * Everything the UI hears on `GLOSSARY_EVENT`. `Error` is terminal-without-
  * result (e.g. final save IO failure); pre-flight failures surface as command
- * errors, not events. `FileChanged` comes from the O15 watcher.
+ * errors, not events. `FileChanged` comes from the O15 watcher. `Terms` streams
+ * each batch's newly-found terms during extraction (some batches yield none).
  */
-export type GlossaryEvent = { "kind": "phase", phase: GlossaryPhase, detail: string | null, } | { "kind": "progress", done: number, total: number, } | { "kind": "log", level: LogLevel, message: string, } | { "kind": "done", summary: GlossaryBuildSummary, } | { "kind": "error", message: string, } | { "kind": "file_changed" };
+export type GlossaryEvent = { "kind": "phase", phase: GlossaryPhase, detail: string | null, } | { "kind": "progress", done: number, total: number, } | { "kind": "terms", batch: number, hits: Array<TermHit>, } | { "kind": "log", level: LogLevel, message: string, } | { "kind": "done", summary: GlossaryBuildSummary, } | { "kind": "error", message: string, } | { "kind": "file_changed" };

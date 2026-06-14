@@ -16,12 +16,15 @@ export function RunScreen({
   description,
   phaseLine,
   cancelNote,
+  body,
 }: {
   title: string;
   description: string;
   /** Build shows its phase label here; import has a single phase → undefined. */
   phaseLine?: ReactNode;
   cancelNote: string;
+  /** Custom body (e.g. the live extraction console); replaces the default bar. */
+  body?: ReactNode;
 }) {
   const done = useGlossaryRun((s) => s.done);
   const total = useGlossaryRun((s) => s.total);
@@ -32,13 +35,17 @@ export function RunScreen({
     <div className="flex h-full flex-col">
       <PageHeader title={title} description={description} />
       <div className="flex-1 overflow-auto p-5">
-        {phaseLine}
-        <div className="flex items-center gap-3">
-          <Progress value={total > 0 ? (done / total) * 100 : 0} className="flex-1" />
-          <span className="text-[11px] text-muted-foreground tabular-nums">
-            {done}/{total} batches
-          </span>
-        </div>
+        {body ?? (
+          <>
+            {phaseLine}
+            <div className="flex items-center gap-3">
+              <Progress value={total > 0 ? (done / total) * 100 : 0} className="flex-1" />
+              <span className="text-[11px] text-muted-foreground tabular-nums">
+                {done}/{total} batches
+              </span>
+            </div>
+          </>
+        )}
       </div>
       {/* Action row — Logs toggle far right, drawer expands below (Translate pattern). */}
       <div className="flex items-center gap-3 border-t border-border bg-[color:var(--popover)] px-5 py-3">
