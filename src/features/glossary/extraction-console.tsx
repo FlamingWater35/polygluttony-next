@@ -14,6 +14,10 @@ const CATS: { key: string; label: string }[] = [
   { key: "organizations", label: "Organizations" },
 ]
 
+/** Chips shown per lane before collapsing the rest into "+N more". A season can
+ *  yield thousands of terms; uncapped lanes would grow without bound. */
+const LANE_CAP = 10
+
 const PHASE_LABEL: Record<GlossaryPhase, string> = {
   loading: "Reading subtitles",
   reference: "Gathering reference terms",
@@ -25,12 +29,11 @@ const PHASE_LABEL: Record<GlossaryPhase, string> = {
 
 /**
  * Live glossary-build console. Terms stream into their six category lanes as
- * extraction batches land. The engine emits terms on batch *completion* (any
- * order), and a local reveal queue drips them onto the screen at a steady pace —
- * so even a batch that returns many terms at once streams in with individual
- * pops, never a dump. Honest by construction: no fake per-lane bars, no unknown
- * "total"; the count is a running tally and the only progress bar tracks
- * *batches scanned*.
+ * extraction batches land (engine emits on batch *completion*, deduped); a local
+ * reveal queue drips them in with individual pops. Honest by construction: no
+ * fake per-lane bars, no unknown "total" — the count is a running tally and the
+ * only progress bar tracks *batches scanned*. The progress bar is pinned at the
+ * top so growing lanes never push it off-screen; each lane caps at LANE_CAP.
  */
 export function ExtractionConsole() {
   const phase = useGlossaryRun((s) => s.phase)
@@ -86,7 +89,7 @@ export function ExtractionConsole() {
     return () => clearTimeout(tm)
   }, [shown])
 
-  const revealed = CATS.reduce((sum, { key }) => sum + (shown[key] ?? 0), 0)
+  const revealed = CATS.reduce((sum, { key }) => sum + Math.min(shown[key] ?? 0, terms[key]?.length ?? 0), 0)
 
   const status =
     phase === "extracting" && total > 0
@@ -97,6 +100,15 @@ export function ExtractionConsole() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* batch reactor — pinned at top so growing lanes never push it off-screen */}
+      <div className="space-y-1.5">
+        <div className="flex justify-between text-[11px] text-muted-foreground tabular-nums">
+          <span>{status}</span>
+          {phase === "extracting" && total > 0 ? <span>{Math.round((done / total) * 100)}%</span> : null}
+        </div>
+        <ReactorBar done={done} total={total} />
+      </div>
+
       {/* world type + running tally */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -122,10 +134,13 @@ export function ExtractionConsole() {
         </div>
       </div>
 
-      {/* category lanes */}
+      {/* category lanes — capped at LANE_CAP chips + "+N more" */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {CATS.map(({ key, label }) => {
-          const list = (terms[key] ?? []).slice(0, shown[key] ?? 0)
+          const have = terms[key]?.length ?? 0
+          const count = Math.min(shown[key] ?? 0, have)
+          const visible = (terms[key] ?? []).slice(0, Math.min(LANE_CAP, count))
+          const more = count - visible.length
           return (
             <div
               key={key}
@@ -137,10 +152,10 @@ export function ExtractionConsole() {
             >
               <div className="mb-2.5 flex items-center justify-between">
                 <span className="text-[11px] font-semibold tracking-[0.04em] text-foreground">{label}</span>
-                <span className="text-[13px] font-bold tabular-nums text-[color:var(--color-gold-hi)]">{list.length}</span>
+                <span className="text-[13px] font-bold tabular-nums text-[color:var(--color-gold-hi)]">{count}</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {list.map((t) => (
+                {visible.map((t) => (
                   <span
                     key={t.source}
                     title={`${t.source} → ${t.target}`}
@@ -149,19 +164,18 @@ export function ExtractionConsole() {
                     {t.target || t.source}
                   </span>
                 ))}
+                {more > 0 ? (
+                  <span
+                    key="more"
+                    className="rounded-full border border-border px-2 py-0.5 text-[10.5px] tabular-nums text-muted-foreground"
+                  >
+                    +{more} more
+                  </span>
+                ) : null}
               </div>
             </div>
           )
         })}
-      </div>
-
-      {/* batch reactor (honest: progress = batches scanned) */}
-      <div className="space-y-1.5">
-        <div className="flex justify-between text-[11px] text-muted-foreground tabular-nums">
-          <span>{status}</span>
-          {phase === "extracting" && total > 0 ? <span>{Math.round((done / total) * 100)}%</span> : null}
-        </div>
-        <ReactorBar done={done} total={total} />
       </div>
     </div>
   )
