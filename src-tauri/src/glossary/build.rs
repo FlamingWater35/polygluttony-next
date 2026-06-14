@@ -169,6 +169,13 @@ pub async fn build_glossary(
     // merges were chosen over completion-order saves.
     // The LlmService bounds the actual parallelism via its permits.
     let completed = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    // Shared seen-set for the LIVE console only: lets each batch stream its NEW
+    // terms the moment it COMPLETES (any order), so a slow batch 1 never
+    // head-of-line-blocks the stream the way in-order consumption does. The
+    // authoritative first-wins merge still happens in batch order below; this is
+    // purely for the live "terms streaming into lanes" feedback.
+    let seen = std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::BTreeSet::<String>::new()));
+    let world = job.world_type.clone();
     let mut futs: FuturesOrdered<_> = batches
         .iter()
         .map(|batch| {
@@ -178,10 +185,35 @@ pub async fn build_glossary(
             };
             let tx = tx.clone();
             let completed = completed.clone();
+            let seen = seen.clone();
+            let world = world.clone();
             async move {
                 let result = svc.request(req).await;
                 let done = completed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                 let _ = tx.send(GlossaryEvent::Progress { done, total }).await;
+                if let Ok(resp) = &result {
+                    if let Ok(v) = parse_response::extract_object(&resp.text) {
+                        let bg = Glossary::from_terms_value(&v, &world);
+                        let mut hits: Vec<crate::events::TermHit> = Vec::new();
+                        {
+                            let mut seen = seen.lock().await;
+                            for c in crate::glossary::model::CATEGORIES {
+                                for (src, tgt) in bg.category(c) {
+                                    if seen.insert(src.clone()) {
+                                        hits.push(crate::events::TermHit {
+                                            category: c.to_string(),
+                                            source: src.clone(),
+                                            target: tgt.clone(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        if !hits.is_empty() {
+                            let _ = tx.send(GlossaryEvent::Terms { batch: done, hits }).await;
+                        }
+                    }
+                }
                 result
             }
         })
@@ -217,25 +249,7 @@ pub async fn build_glossary(
                 // Per-batch count BEFORE cross-batch dedupe (Python parity).
                 let count = batch_glossary.count() as u32;
                 terms_extracted += count;
-                // Live console: the terms THIS batch newly contributes (keys not
-                // already seen) — what merge_first_wins is about to add. Computed
-                // pre-merge so the running tally tracks real additions, not dupes.
-                let mut hits: Vec<crate::events::TermHit> = Vec::new();
-                for c in crate::glossary::model::CATEGORIES {
-                    for (src, tgt) in batch_glossary.category(c) {
-                        if !new_terms.has_key(src) {
-                            hits.push(crate::events::TermHit {
-                                category: c.to_string(),
-                                source: src.clone(),
-                                target: tgt.clone(),
-                            });
-                        }
-                    }
-                }
                 new_terms.merge_first_wins(&batch_glossary);
-                if !hits.is_empty() {
-                    let _ = tx.send(GlossaryEvent::Terms { batch: n, hits }).await;
-                }
                 batches_processed += 1;
                 // Crash-safe incremental save: always merged-with-existing
                 // (the Python bug wrote new-terms-only), never an empty file.
