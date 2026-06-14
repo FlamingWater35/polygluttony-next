@@ -10,7 +10,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { SetupField } from "@/components/setup-field";
 import { HelpText } from "@/components/help-text";
 import { Spinner } from "@/components/ui/spinner";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ModelCombobox } from "./model-combobox";
 import {
   AdvancedSettingsSection,
@@ -351,15 +350,7 @@ export function ConnectionEditor({
             Set as active
           </Button>
         ) : null}
-        <TestResultIndicator state={testState} />
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={runTest}
-          disabled={testState === "testing"}
-        >
-          Test connection
-        </Button>
+        <TestButton state={testState} onRun={runTest} />
         <Button type="submit" disabled={!canSave}>
           {formState.isSubmitting ? "Saving…" : "Save"}
         </Button>
@@ -369,38 +360,69 @@ export function ConnectionEditor({
 }
 
 /**
- * Test outcome shown to the left of the "Test connection" button:
- * a spinner while testing, a green check on success, or a clickable red
- * cross whose tooltip reveals the error message.
+ * A single button that is its own loader and result indicator.
+ * idle → default secondary; testing → gold animated fill + spinner;
+ * ok → jade; fail → coral (stays clickable to retry, title shows error).
  */
-function TestResultIndicator({ state }: { state: "idle" | "testing" | TestResult }) {
-  if (state === "idle") return null;
-  if (state === "testing") return <Spinner className="text-muted-foreground" />;
-  if (state.ok) {
-    return (
-      <Check
-        weight="bold"
-        aria-label="Connection OK"
-        className="size-4 text-[color:var(--color-success)]"
-      />
-    );
-  }
+function TestButton({
+  state,
+  onRun,
+}: {
+  state: "idle" | "testing" | TestResult;
+  onRun: () => void;
+}) {
+  const st =
+    state === "idle"
+      ? "idle"
+      : state === "testing"
+        ? "testing"
+        : state.ok
+          ? "ok"
+          : "fail";
+
+  const extraClasses =
+    st === "idle"
+      ? "min-w-[176px] justify-center"
+      : st === "testing"
+        ? "min-w-[176px] justify-center !bg-[var(--color-gold-deep)] !text-[color:var(--color-ink-emphasis)]"
+        : st === "ok"
+          ? "min-w-[176px] justify-center !bg-[var(--color-jade)] !text-[#0c1a0c]"
+          : "min-w-[176px] justify-center !bg-[var(--color-coral)] !text-[#2a0c0c]";
+
+  const isDisabled = st === "testing";
+  const title = st === "fail" && state !== "idle" && state !== "testing" ? state.message : undefined;
+
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label="Connection failed — show error"
-            className="flex size-5 items-center justify-center rounded-full text-[color:var(--color-danger)] hover:bg-[color:var(--color-bg-hover)]"
-          >
-            <X weight="bold" className="size-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-xs whitespace-pre-wrap">
-          {state.message}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Button
+      type="button"
+      variant="secondary"
+      disabled={isDisabled}
+      onClick={onRun}
+      title={title}
+      className={`relative overflow-hidden ${extraClasses}`}
+    >
+      {st === "testing" && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 [background:repeating-linear-gradient(115deg,transparent_0_9px,rgba(255,255,255,.18)_9px_11px)] [animation:sig-flow_1.05s_linear_infinite]"
+        />
+      )}
+      {st === "idle" && "Test connection"}
+      {st === "testing" && (
+        <span className="relative z-[1] inline-flex items-center gap-2">
+          <Spinner className="size-3.5" /> Testing…
+        </span>
+      )}
+      {st === "ok" && (
+        <span className="relative z-[1] inline-flex items-center gap-2">
+          <Check weight="bold" className="size-4" /> Connected
+        </span>
+      )}
+      {st === "fail" && (
+        <span className="relative z-[1] inline-flex items-center gap-2">
+          <X weight="bold" className="size-4" /> Unreachable
+        </span>
+      )}
+    </Button>
   );
 }
