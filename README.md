@@ -1,63 +1,48 @@
-# polygluttony
+<div align="center">
 
-LLM-powered subtitle translation for donghua and anime — a cross-platform
-desktop app (Linux / macOS / Windows). A ground-up rebuild of the Python
-`subs-translate` project on a Tauri + Rust core with a React frontend.
+<img src="assets/welcome.png" alt="Polygluttony" width="860">
 
-It translates `.ass` subtitle files through a three-pass pipeline — glossary
-extraction, translation with validation, and quality verification — against any
-Anthropic, OpenAI, or OpenAI-compatible LLM provider.
+# Polygluttony
+
+**LLM-powered subtitle translation for donghua & anime — built to protect the things that break.**
+
+[Website](https://pg.blyat.uk) · [Download](../../releases/latest) · macOS · Windows · Linux
+
+</div>
+
+---
+
+Polygluttony translates `.ass` subtitle files with an LLM while guarding against the failure modes that wreck naive machine translation. Point it at a folder, connect a provider (Anthropic, OpenAI, or any OpenAI-compatible endpoint — including Gemini), optionally build a glossary, and run — watching live, honest telemetry the whole way.
+
+## Why it's different
+
+- **Line markers & partial-failure recovery** — every line is tracked, so when a model drops, merges, or reorders lines, Polygluttony detects exactly where it broke and salvages the correct prefix instead of failing the whole batch.
+- **Drift detection** — a five-signal weighted detector catches translations wandering off the source mid-batch and retranslates only the part that drifted.
+- **Byte-faithful ASS tags** — `{\pos}`, `{\an8}`, fonts, styles, and metadata come back exactly as they went in; only the dialogue is translated.
+- **Cross-episode glossary** — a six-category glossary, with auto-detected world type (xianxia / wuxia / historical / modern), keeps names and terms consistent across a whole season.
+- **Verification, not a score** — every file checks its own work and surfaces an actionable issue list, never a number.
+- **Mission-control UI** — a single window with live, batched telemetry: watch batches land, terms stream into the glossary, and drift get caught in real time.
+
+## Download
+
+Grab the latest build for your OS from the [**Releases**](../../releases/latest) page — macOS (Apple Silicon + Intel), Windows, and Linux.
+
+> Builds are unsigned for now. On macOS, right-click the app → **Open** the first time; on Windows, choose **More info → Run anyway**.
+
+## Build from source
+
+Requires [Bun](https://bun.sh) and [Rust](https://rustup.rs) (stable), plus the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
+
+```bash
+bun install
+bun tauri dev      # run with hot reload
+bun tauri build    # produce a distributable bundle
+```
 
 ## Stack
 
-**Backend (Rust, in `src-tauri/`)**
-- Tauri 2 shell — exposes the engine to the webview via commands + events
-- The translation engine lives in `src-tauri/src/` (no separate crate, no CLI):
-  `ass/` (subtitle parsing + tag preservation), `llm/` (Anthropic / OpenAI /
-  OpenAI-Responses drivers over `reqwest`), `glossary/` (extraction, world-type
-  detection, diff), `validation/` (marker checks + five-signal drift detector),
-  `translation/` (token-aware batching, concurrency, verification)
-- `tokio`, `futures`, `tiktoken-rs`, `regex`, `tracing`, `thiserror`/`anyhow`
-- Plugins: `store` (config), `dialog` (folder picker), `fs`, `notification`,
-  `opener`
-- `ts-rs` generates TypeScript types for the IPC boundary into
-  `src/types/generated/`
-
-**Frontend (React, in `src/`)**
-- React 19 + Vite + TypeScript
-- Tailwind v4 + shadcn/ui (radix base, `maia` style), Phosphor icons
-  (`@phosphor-icons/react`), `motion`
-- TanStack Router (file-based, `src/routes/`) + TanStack Query
-- Zustand (app state), react-hook-form + zod (forms), sonner (toasts)
-- Single-window shell (icon rail + header + status bar). Feature screens in
-  `src/features/`: `connections`, `welcome`, `project` (built); `glossary`,
-  `translate`, `verify`, `settings` (later)
-
-## Prerequisites
-
-- [Bun](https://bun.sh)
-- Rust (stable) + the Tauri system dependencies for your OS — see
-  <https://tauri.app/start/prerequisites/>
-
-## Development
-
-```bash
-bun install              # install frontend dependencies
-bun tauri dev            # run the desktop app (Vite + Rust, hot reload)
-```
-
-Useful scripts:
-
-```bash
-bun run build            # tsr generate -> tsc -> vite build (frontend only)
-bun run gen:routes       # regenerate the TanStack route tree
-bun run gen:bindings     # regenerate ts-rs TypeScript bindings from Rust types
-bun tauri build          # produce a distributable bundle for the current OS
-```
-
-When you change a Rust type that crosses the IPC boundary (anything deriving
-`TS`), run `bun run gen:bindings` to refresh `src/types/generated/`.
+Tauri 2 · Rust · React 19 · TypeScript · Tailwind v4 · TanStack Router/Query.
 
 ## License
 
-MIT
+[MIT](LICENSE).
