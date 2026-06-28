@@ -1,0 +1,50 @@
+[package]
+name = "polygluttony"
+version = "1.0.0"
+description = "LLM-powered subtitle translation for donghua and anime"
+authors = ["n0ks"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "polygluttony_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-store = "2.4.3"
+tauri-plugin-dialog = "2.7.1"
+tauri-plugin-fs = "2.5.1"
+tauri-plugin-notification = "2.3.3"
+tokio = { version = "1.52.3", features = ["sync", "time", "macros", "rt-multi-thread"] }
+futures = "0.3.32"
+regex = "1.12.3"
+anyhow = "1.0.102"
+thiserror = "2.0.18"
+tiktoken-rs = "0.12.0"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+ts-rs = "12.0.1"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "stream", "rustls", "http2", "charset"] }
+async-trait = "0.1"
+encoding_rs = "0.8"
+chardetng = "0.1"
+tokio-util = "0.7.18"
+rand = "0.10.1"
+eventsource-stream = "0.2.3"
+notify = "8.2.0"
+
+[dev-dependencies]
+wiremock = "0.6"
+tempfile = "3"
+tokio = { version = "1.52.3", features = ["test-util"] }

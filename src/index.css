@@ -1,0 +1,180 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/figtree";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Figtree Variable', sans-serif;
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+    --background: #0c0a07;        /* obsidian field */
+    --foreground: #ecdfc6;        /* ink */
+    --card: #16110a;              /* surface */
+    --card-foreground: #ecdfc6;
+    --popover: #201810;           /* raised */
+    --popover-foreground: #ecdfc6;
+    --primary: #e1a636;           /* Shēng Luó gold — the signal */
+    --primary-foreground: #0c0a07;
+    --secondary: #201810;         /* raised */
+    --secondary-foreground: #ecdfc6;
+    --muted: #16110a;
+    --muted-foreground: #9c8b69;  /* text-muted */
+    --accent: #201810;            /* raised (hover surfaces) */
+    --accent-foreground: #fff4dc; /* ink-emphasis */
+    --destructive: #ff8a8a;       /* coral */
+    --border: #2c2316;            /* gold-tinted hairline */
+    --input: #3a2f1c;             /* border-strong */
+    --ring: #e1a636;              /* gold focus */
+    --sidebar: #0c0a07;
+    --sidebar-foreground: #ecdfc6;
+    --sidebar-primary: #e1a636;
+    --sidebar-primary-foreground: #0c0a07;
+    --sidebar-accent: #201810;
+    --sidebar-accent-foreground: #fff4dc;
+    --sidebar-border: #2c2316;
+    --sidebar-ring: #e1a636;
+}
+
+@theme inline {
+    /* legacy names — NEW imperial values (existing references inherit these) */
+    --color-alert: #f0b53e;          /* amber: warning + retranslating */
+    --color-success: #9bd6a0;        /* jade: done */
+    --color-danger: #ff8a8a;         /* coral: failed */
+    --color-state-cleanup: #79c0c0;  /* teal: cleanup */
+    --color-state-verify: #6cc7d6;   /* aqua: verify */
+    --color-bg-deepest: #0c0a07;     /* obsidian */
+    --color-bg-hover: #2a2114;       /* hover wash */
+    /* intent-named additions — use these in new components */
+    --color-gold: #e1a636;
+    --color-gold-hi: #ffd98a;
+    --color-gold-deep: #8f661f;
+    --color-obsidian: #0c0a07;
+    --color-surface: #16110a;
+    --color-raised: #201810;
+    --color-ink: #ecdfc6;
+    --color-ink-emphasis: #fff4dc;
+    --color-ink-dim: #6f6347;
+    --color-jade: #9bd6a0;
+    --color-teal: #79c0c0;
+    --color-aqua: #6cc7d6;
+    --color-amber: #f0b53e;
+    --color-coral: #ff8a8a;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  html {
+    @apply font-sans;
+    }
+}
+
+@layer utilities {
+  /* gold signal bloom behind a live element */
+  .signal-bloom { box-shadow: 0 0 18px -2px color-mix(in oklch, var(--color-gold) 65%, transparent); }
+  /* the one cinematic shadow: the deck frame */
+  .deck-frame {
+    box-shadow:
+      0 0 0 1px rgba(0,0,0,.6),
+      0 40px 120px -30px rgba(0,0,0,.9),
+      inset 0 0 80px -20px rgba(225,166,54,.06);
+  }
+
+  /* Depth-push view transition — scoped to the MAIN content only. <main> carries
+     view-transition-name: app-main, so the rail + status bar never move. The
+     scale stays ≤1 so the content never bleeds over the rail during the morph. */
+  ::view-transition-old(app-main) { animation: vt-recede .26s cubic-bezier(.16,1,.3,1) both; }
+  ::view-transition-new(app-main) { animation: vt-advance .42s cubic-bezier(.16,1,.3,1) both; }
+  /* Rail + status bar (the rest of the page) stay put across views. */
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}
+
+@keyframes vt-advance { from { opacity:0; transform:scale(.965); filter:blur(6px); } to { opacity:1; transform:none; filter:none; } }
+@keyframes vt-recede { from { opacity:1; transform:scale(1); } to { opacity:0; transform:scale(.99); } }
+@keyframes sig-ping { 0%{box-shadow:0 0 0 0 color-mix(in oklch,var(--color-gold) 55%,transparent);} 70%,100%{box-shadow:0 0 0 8px transparent;} }
+@keyframes sig-shimmer { 0%{background-position:120% 0;} 100%{background-position:-120% 0;} }
+@keyframes sig-sweep { 0%{transform:translateX(-100%);opacity:.9;} 100%{transform:translateX(100%);opacity:0;} }
+@keyframes sig-flow { 0%{background-position:0 0;} 100%{background-position:34px 0;} }
+@keyframes gloss-pop { 0%{opacity:0;transform:translateY(8px) scale(.6);} 100%{opacity:1;transform:none;} }
