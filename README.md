@@ -6,9 +6,13 @@
 
 **LLM-powered subtitle translation for donghua & anime — built to protect the things that break.**
 
-[Website](https://pg.blyat.uk) · [Download](../../releases/latest) · macOS · Windows · Linux
+[Original repository](https://github.com/blyat-uk/polygluttony) · [Download](../../releases/latest) · macOS · Windows · Linux
 
 </div>
+
+---
+
+*Note: This is a fork of the original Polygluttony project. Credits for this tool go to the original developer.*
 
 ---
 
@@ -28,6 +32,7 @@ Polygluttony translates `.ass` subtitle files with an LLM while guarding against
 Grab the latest build for your OS from the [**Releases**](../../releases/latest) page — macOS (Apple Silicon), Windows, and Linux.
 
 > These builds aren't signed with a paid developer certificate, so the OS warns on first launch:
+>
 > - **macOS** — the first launch is blocked. Open **System Settings → Privacy & Security**, scroll to the bottom, and click **Open Anyway**, then launch again and confirm. (Right-click → Open no longer works on recent macOS.)
 > - **Windows** — on the SmartScreen prompt, choose **More info → Run anyway**.
 
