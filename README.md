@@ -32,7 +32,7 @@
 
 Polygluttony Next translates `.ass` subtitle files with an LLM while guarding against the failure modes that wreck naive machine translation. Point it at a folder, connect a provider (Anthropic, Gemini, Openrouter, OpenAI, or any OpenAI-compatible endpoint), optionally build a glossary, and run — watching live, honest telemetry the whole way.
 
-## Why it's different
+## ❓ Why Polygluttony Next
 
 - **Line markers & partial-failure recovery** — every line is tracked, so when a model drops, merges, or reorders lines, Polygluttony Next detects exactly where it broke and salvages the correct prefix instead of failing the whole batch.
 - **Drift detection** — a five-signal weighted detector catches translations wandering off the source mid-batch and retranslates only the part that drifted.
@@ -41,27 +41,89 @@ Polygluttony Next translates `.ass` subtitle files with an LLM while guarding ag
 - **Verification, not a score** — every file checks its own work and surfaces an actionable issue list, never a number.
 - **Mission-control UI** — a single window with live, batched telemetry: watch batches land, terms stream into the glossary, and drift get caught in real time.
 
-## Download
+## 📥 Download
 
 Grab the latest build for your OS from the [**Releases**](../../releases/latest) page — macOS (Apple Silicon), Windows, and Linux.
 
-> These builds aren't signed with a paid developer certificate, so the OS warns on first launch:
+> Important: these builds aren't signed with a paid developer certificate, so the OS warns on first launch:
 >
-> - **macOS** — the first launch is blocked. Open **System Settings → Privacy & Security**, scroll to the bottom, and click **Open Anyway**, then launch again and confirm. (Right-click → Open no longer works on recent macOS.)
+> - **macOS** — the first launch is blocked. Open **System Settings → Privacy & Security**, scroll to the bottom, and click **Open Anyway**, then launch again and confirm.
 > - **Windows** — on the SmartScreen prompt, choose **More info → Run anyway**.
-> - **Linux** — `chmod +x Polygluttony-Next-*.AppImage`, then run it.
+> - **Linux**: Make the `.AppImage` executable (`chmod +x`) and run it.
 
-## Build from source
+---
 
-Requires [Bun](https://bun.sh) and [Rust](https://rustup.rs) (stable), plus the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
+## 🚀 Usage Guide
+
+Polygluttony Next is designed for batch-translating subtitle files (`.ass`) while maintaining context, formatting, and terminology consistency. To get the best results, follow this workflow:
+
+### 1. Set Up Your Connections
+
+Head to the **Connections** tab to configure your LLM providers.
+
+- Add your API keys for **Anthropic**, **OpenAI**, or a local **Ollama** instance.
+- You can set up multiple connections and assign specific ones for different tasks (e.g., a fast model for batch translation, a reasoning model for verification).
+- Use the "Test" button to verify your credentials and fetch available models.
+- *Tip:* Enable "Web Search" on a connection if you want the app to automatically look up established names from wikis for personalization.
+
+### 2. Prepare Your Workspace
+
+- Go to the **Project** tab and select a folder containing your source `.ass` subtitle files.
+- Polygluttony will automatically scan the folder and list all compatible files.
+- Set your default source and target languages in the project settings.
+
+### 3. Build a Glossary (Crucial for Consistency)
+
+Before translating, build a glossary to ensure names, locations, and specific terminology (e.g., Wuxia/Xianxia cultivation stages) remain consistent across episodes.
+
+- Navigate to the **Glossary** tab.
+- Polygluttony can automatically detect recurring terms and suggest translations.
+- You can manually edit, approve, or add new terms. The engine will strictly enforce these terms during translation.
+- The app watches your `glossary.json` file for external edits, so you can update it in a text editor while the app is running.
+
+### 4. Customize Prompts & Tones
+
+Visit the **Prompts** tab to tweak how the LLM approaches the translation.
+
+- Choose a **Tone** (Standard, Comedic, Poetic, Wuxia, Xianxia) to guide the stylistic output.
+- Edit the system and user prompts to include specific instructions (e.g., "Keep honorifics", "Translate sound effects", "Handle punctuation carefully").
+- The `{GLOSSARY}` and `{TONE}` variables are automatically injected into the prompt context.
+
+### 5. Translate & Verify (The Mission Control Experience)
+
+- Head to the **Translate** tab and hit **Start**.
+- Watch as batches are processed in real-time.
+- **Drift Detection:** If the LLM starts hallucinating, leaving source text in the output, or ignoring formatting tags, the engine catches it and automatically triggers a retranslation of the affected scopes.
+- **Verification Pass:** Once the initial translation is done, a secondary LLM pass reviews the output for formatting errors, missing tags, and glossary violations, surfacing an actionable issue list.
+- Review any flagged issues in the UI. You can manually approve them or force a retranslation.
+- If a file exhausts its retranslation budget, a warning file is generated so you know exactly which lines need human intervention.
+
+### 6. Export
+
+Once the verify pass is clean, your translated `.ass` files are automatically saved in your project folder. A credit line (`; Translated at home with Polygluttony Next`) is automatically injected into the `[Script Info]` header of every output file.
+
+---
+
+## 🛠️ Building from Source
+
+If you want to build the app locally, you'll need [Bun](https://bun.sh/) and [Rust](https://www.rust-lang.org/tools/install). Ensure you also have [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
 
 ```bash
+# Clone the repository
+git clone https://github.com/FlamingWater35/polygluttony-next.git
+cd polygluttony-next
+
+# Install frontend dependencies
 bun install
-bun tauri dev      # run with hot reload
-bun tauri build    # produce a distributable bundle
+
+# Run in development mode
+bun tauri dev
+
+# Build for production
+bun tauri build
 ```
 
-## Development
+## ⚙️ Development
 
 To run generators:
 
@@ -70,6 +132,6 @@ bun run gen:routes
 bun run gen:bindings
 ```
 
-## License
+## 📜 License
 
 [MIT](LICENSE.md)
