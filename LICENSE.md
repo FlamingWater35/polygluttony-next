@@ -1,6 +1,7 @@
 MIT License
 
 Copyright (c) 2026 blyat.uk
+
 Copyright (c) 2026 FlamingWater
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
