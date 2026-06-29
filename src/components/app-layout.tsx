@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from "react"
 import { NavRail } from "@/components/nav-rail"
 import { StatusBar } from "@/components/status-bar"
 import { AtmosphereBackdrop } from "@/components/atmosphere-backdrop"
-import { onBackendEvent } from "@/lib/ipc"
+import { ipc, onBackendEvent } from "@/lib/ipc"
 import { useTranslationRun } from "@/stores/translation-store"
 import { useGlossaryRun } from "@/stores/glossary-store"
 import { useSettingsStore, UI_SCALE_MAP } from "@/stores/settings-store"
@@ -26,6 +26,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.style.fontSize = UI_SCALE_MAP[uiScale]
   }, [uiScale])
+
+  // Show the window once the layout is mounted and ready
+  useEffect(() => {
+    setTimeout(() => {
+      ipc.showMainWindow().catch(console.error)
+    }, 50)
+  }, [])
 
   useEffect(() => {
     const un = onBackendEvent<RunEvent>("translation://event", (e) => applyEvent(e.payload))
