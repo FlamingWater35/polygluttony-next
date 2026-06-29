@@ -40,6 +40,7 @@ Grab the latest build for your OS from the [**Releases**](../../releases/latest)
 >
 > - **macOS** — the first launch is blocked. Open **System Settings → Privacy & Security**, scroll to the bottom, and click **Open Anyway**, then launch again and confirm. (Right-click → Open no longer works on recent macOS.)
 > - **Windows** — on the SmartScreen prompt, choose **More info → Run anyway**.
+> - **Linux** — `chmod +x Polygluttony-*.AppImage`, then run it.
 
 ## Build from source
 
@@ -62,4 +63,4 @@ bun run gen:bindings
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE.md)
