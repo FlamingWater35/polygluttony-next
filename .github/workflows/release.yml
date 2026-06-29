@@ -110,6 +110,6 @@ jobs:
           fail_on_unmatched_files: true
           files: dist-release/*
           body: |
-            Download the build for your platform below.
+            Download the build for your platform below. Check [Download instructions](https://github.com/FlamingWater35/polygluttony#download) for more info.
 
             ### Changelog
