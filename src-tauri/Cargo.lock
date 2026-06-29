@@ -2901,7 +2901,7 @@ dependencies = [
 
 [[package]]
 name = "polygluttony-next"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "anyhow",
  "async-trait",
