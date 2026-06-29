@@ -12,7 +12,7 @@
 
 ---
 
-*Note: This is a fork of the original Polygluttony project. Credits for this tool go to the original developer.*
+*Note: This is a fork of the original Polygluttony project. Credits for this tool go to the original [developer](https://github.com/blyat-uk).*
 
 ---
 
