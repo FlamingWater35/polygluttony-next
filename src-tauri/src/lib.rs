@@ -4,7 +4,6 @@
 //! and the translation engine. The engine modules below are pure Rust and exist
 //! solely to serve the webview through the commands in [`commands`].
 
-
 mod commands;
 mod config;
 mod error;
@@ -14,11 +13,11 @@ mod models;
 // Translation engine. Ported from the original Python `subs_translator` package;
 // implementation lands here incrementally.
 mod ass;
-mod utils;
 mod glossary;
 mod llm;
 mod prompts;
 mod translation;
+mod utils;
 mod validation;
 
 /// Entry point invoked from `main.rs` (and the mobile entry point).
@@ -26,8 +25,7 @@ mod validation;
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -42,6 +40,7 @@ pub fn run() {
         .manage(glossary::watch::GlossaryWatchState::default())
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::show_main_window,
             commands::list_connections,
             commands::read_connection,
             commands::save_connection,

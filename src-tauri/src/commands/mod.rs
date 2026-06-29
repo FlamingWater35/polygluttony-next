@@ -27,3 +27,9 @@ pub fn app_info() -> AppInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
     }
 }
+
+/// Shows the main window once the frontend is fully ready.
+#[tauri::command]
+pub fn show_main_window(window: tauri::Window) {
+    let _ = window.show();
+}

@@ -27,6 +27,8 @@ import type { PromptMeta } from "@/types/generated/PromptMeta";
 export const ipc = {
   /** App/core metadata. Doubles as a startup health check for the IPC bridge. */
   appInfo: () => invoke<AppInfo>("app_info"),
+  /** Show the main window once the frontend is ready. */
+  showMainWindow: () => invoke<void>("show_main_window"),
   /** O21 — check whether any usable connection exists (first-run gate). */
   firstRunStatus: () => invoke<FirstRunStatus>("first_run_status"),
   /** Return the provider preset table for the Connections UI. */
