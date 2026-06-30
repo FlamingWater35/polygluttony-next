@@ -131,13 +131,24 @@ pub async fn import_reference_files(
     run::spawn_forwarder(app.clone(), rx);
     let svc = run::service_for(&conn.for_glossary(), cancel.clone(), tx.clone());
     let files: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-    let (terms, files_processed, errors) =
-        reference::extract_from_files(&svc, &files, conn.batch_dialogue_limit, &tx, &reference_template).await;
+    let (terms, files_processed, errors) = reference::extract_from_files(
+        &svc,
+        &files,
+        conn.batch_dialogue_limit,
+        &tx,
+        &reference_template,
+    )
+    .await;
     let count = terms.count() as u32;
     if count > 0 {
         reference::save_cache(&dir, &terms)?;
     }
-    Ok(ReferenceSummary { count, files_processed, cancelled: cancel.is_cancelled(), errors })
+    Ok(ReferenceSummary {
+        count,
+        files_processed,
+        cancelled: cancel.is_cancelled(),
+        errors,
+    })
 }
 
 #[tauri::command]
@@ -175,7 +186,9 @@ pub fn export_glossary(folder: String, dest: String) -> AppResult<()> {
     // non-existent dest can't be src.
     if let (Ok(d), Ok(s)) = (Path::new(&dest).canonicalize(), src.canonicalize()) {
         if d == s {
-            return Err(AppError::Other("export destination is the glossary itself".into()));
+            return Err(AppError::Other(
+                "export destination is the glossary itself".into(),
+            ));
         }
     }
     std::fs::copy(src, dest)?;

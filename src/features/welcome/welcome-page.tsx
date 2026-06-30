@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Translate } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { RecentItem } from "@/components/recent-item";
 import { useAppStore } from "@/stores/app-store";
@@ -31,8 +32,14 @@ export function WelcomePage() {
   const open = useOpenFolder();
 
   const pick = async () => {
-    const path = await openDialog({ directory: true, multiple: false });
-    if (typeof path === "string") open.mutate(path);
+    try {
+      const path = await openDialog({ directory: true, multiple: false });
+      if (typeof path === "string") {
+        open.mutate(path);
+      }
+    } catch (e: unknown) {
+      toast.error(`Failed to open folder dialog: ${String(e)}`);
+    }
   };
 
   // Folder drag-and-drop onto the window → open the first dropped path.
@@ -59,7 +66,6 @@ export function WelcomePage() {
           LLM-powered subtitle translation for donghua &amp; anime.
         </p>
       </div>
-
       {!hasConnection ? (
         <div className="w-full max-w-xl space-y-2">
           <Step n={1} title="Connect an AI provider" hint="OpenAI, Anthropic, Gemini, Z.AI, or a local model — needs an API key.">
@@ -107,7 +113,6 @@ export function WelcomePage() {
           </p>
         </div>
       )}
-
       {/* Alert Dialog shown when the selected folder contains no subtitle files */}
       <AlertDialog
         open={emptyResult}

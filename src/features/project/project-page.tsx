@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, Play } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import type { Language } from "@/types/generated/Language";
 import type { FolderPrefs } from "@/types/generated/FolderPrefs";
 import type { Tone } from "@/types/generated/Tone";
@@ -23,6 +24,7 @@ const WORLDS: WorldType[] = ["xianxia", "wuxia", "historical", "modern"];
 // src-tauri/src/config/projects.rs.
 const toneForWorld = (w: WorldType): Tone =>
   w === "xianxia" ? "xianxia" : w === "wuxia" ? "wuxia" : "standard";
+
 const SELECT_CLS =
   "h-9 w-full rounded-md border border-input bg-[color:var(--card)] px-2 text-sm";
 
@@ -47,16 +49,22 @@ export function ProjectPage() {
 
   const persist = (next: FolderPrefs) => {
     setPrefs(next);
-    // Save immediately (per-folder) so a tab switch / revisit sees the change.
-    void ipc.saveFolderPrefs(view.folder, next);
     // Keep the cached ProjectView + the shell (status bar + rail gating) in sync.
     qc.setQueryData(projectKey(view.folder), { ...view, prefs: next });
     syncProjectStore({ ...view, prefs: next });
+
+    // Save immediately (per-folder) with proper error handling
+    ipc.saveFolderPrefs(view.folder, next).catch((e: unknown) => {
+      toast.error(`Failed to save preferences: ${String(e)}`);
+    });
+
     // The source/target pair doubles as the global default for new folders + sessions.
     const langsChanged =
       next.source_lang !== prefs.source_lang || next.target_lang !== prefs.target_lang;
     if (langsChanged && next.source_lang !== next.target_lang) {
-      void ipc.setDefaultLanguages(next.source_lang, next.target_lang);
+      ipc.setDefaultLanguages(next.source_lang, next.target_lang).catch((e: unknown) => {
+        toast.error(`Failed to set default languages: ${String(e)}`);
+      });
     }
   };
 
@@ -86,7 +94,6 @@ export function ProjectPage() {
         <p className="mb-3 text-[12.5px] text-muted-foreground tabular-nums">
           {view.files.length} subtitle files · {view.total_dialogue_lines} lines
         </p>
-
         <div className="grid grid-cols-2 gap-x-4">
           <SetupField
             label="Source language"
@@ -102,7 +109,7 @@ export function ProjectPage() {
             label="Target language"
             help={
               sameLang ? (
-                <p className="mt-1 text-[11px] text-[color:var(--color-danger)]">
+                <p className="mt-1 text-[11px] text-(--color-danger)">
                   Source and target must differ.
                 </p>
               ) : undefined
@@ -114,14 +121,13 @@ export function ProjectPage() {
               onChange={(v) => persist({ ...prefs, target_lang: v })}
             />
           </SetupField>
-
           {showWorld ? (
             <SetupField
               label="World type"
               help={
                 <HelpText>
                   Sets which terms to prioritize — e.g. xianxia favors cultivation terms like 金丹 →
-                  “Golden Core”. Auto-detected; change it if the guess is off.
+                  &quot;Golden Core&quot;. Auto-detected; change it if the guess is off.
                 </HelpText>
               }
             >
@@ -149,12 +155,11 @@ export function ProjectPage() {
               </select>
             </SetupField>
           ) : null}
-
           <SetupField
             label="Tone"
             help={
               <HelpText>
-                How the dialogue reads — e.g. “standard” for everyday speech, “wuxia” for sweeping
+                How the dialogue reads — e.g. &quot;standard&quot; for everyday speech, &quot;wuxia&quot; for sweeping
                 martial-arts lines.
               </HelpText>
             }
@@ -172,15 +177,13 @@ export function ProjectPage() {
             </select>
           </SetupField>
         </div>
-
         <FileList
           files={view.files}
           selected={prefs.selected_files}
           onChange={(sel) => persist({ ...prefs, selected_files: sel })}
         />
       </div>
-
-      <div className="flex items-center gap-3 border-t border-border bg-[color:var(--popover)] px-5 py-3">
+      <div className="flex items-center gap-3 border-t border-border bg-popover px-5 py-3">
         <span className="text-[11px] text-muted-foreground">Next:</span>
         {showGlossary ? (
           <Button variant="secondary" onClick={() => navigate({ to: "/glossary" })}>
