@@ -93,11 +93,10 @@ pub async fn open_folder(app: AppHandle, path: String, now: i64) -> AppResult<Pr
     // spawn_blocking is available and its JoinError implements Display).
     let dir_for_blocking = dir.clone();
     let pair_for_blocking = pair.clone();
-    let analyzed = tokio::task::spawn_blocking(move || {
-        analyze_folder(&dir_for_blocking, &pair_for_blocking)
-    })
-    .await
-    .map_err(|e| AppError::Other(e.to_string()))?;
+    let analyzed =
+        tokio::task::spawn_blocking(move || analyze_folder(&dir_for_blocking, &pair_for_blocking))
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
 
     let detected_source_lang = detect_source_language(&analyzed.combined_text);
 
@@ -120,9 +119,7 @@ pub async fn open_folder(app: AppHandle, path: String, now: i64) -> AppResult<Pr
     let supports_world = effective_src
         .as_ref()
         .is_some_and(|l| l.supports_world_detection);
-    let supports_glossary = effective_src
-        .as_ref()
-        .is_some_and(|l| l.supports_glossary);
+    let supports_glossary = effective_src.as_ref().is_some_and(|l| l.supports_glossary);
     let detected_world = detect(&analyzed.combined_text, supports_world);
     // Fresh folders inherit the tone implied by the detected world (xianxia/
     // wuxia → matching tone); saved prefs are never touched. Non-Chinese
@@ -135,8 +132,7 @@ pub async fn open_folder(app: AppHandle, path: String, now: i64) -> AppResult<Pr
     projects::record_recent(&mut projects_cfg, &path, analyzed.files.len() as u32, now);
     projects::save(&app, &projects_cfg)?;
 
-    let glossary_terms =
-        crate::glossary::io::load_folder_glossary(&dir).map(|g| g.count() as u32);
+    let glossary_terms = crate::glossary::io::load_folder_glossary(&dir).map(|g| g.count() as u32);
 
     Ok(ProjectView {
         folder: path,
