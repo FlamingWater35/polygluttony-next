@@ -9,7 +9,7 @@ export function projectKey(path: string) {
   return ["project", path] as const;
 }
 
-/** Apply a ProjectView to global shell state (status bar + rail gating). */
+/** Apply a ProjectView to global shell state (status bar + rail gating) */
 export function syncProjectStore(view: ProjectView) {
   const untranslated = view.files.filter((f) => !f.has_translation).length;
   useAppStore.getState().setProject({
@@ -28,7 +28,7 @@ export function syncProjectStore(view: ProjectView) {
 /**
  * Open a folder: discover/analyze, seed the project cache, sync the shell, and
  * navigate to Project. A folder with zero `.ass` files stays on Welcome (the
- * caller renders an inline message from `mutation.data`).
+ * caller renders a popup dialog from `mutation.data`).
  */
 export function useOpenFolder() {
   const qc = useQueryClient();
@@ -37,7 +37,7 @@ export function useOpenFolder() {
     mutationFn: ipc.openFolder,
     onSuccess: (view) => {
       qc.invalidateQueries({ queryKey: ["recents"] });
-      if (view.files.length === 0) return; // empty: stay, show inline message
+      if (view.files.length === 0) return; // empty: stay, show popup dialog
       qc.setQueryData(projectKey(view.folder), view);
       syncProjectStore(view);
       void navigate({ to: "/project" });

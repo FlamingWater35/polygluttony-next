@@ -8,7 +8,21 @@ import { RecentItem } from "@/components/recent-item";
 import { useAppStore } from "@/stores/app-store";
 import { useRecents, useRecentMutations } from "./use-recents";
 import { useOpenFolder } from "@/features/project/use-project";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
+/**
+ * Welcome / Landing Page.
+ * Displays step-by-step setup guides or a list of recently opened project folders.
+ * Handles opening folders via a dialog or drag-and-drop.
+ */
 export function WelcomePage() {
   const navigate = useNavigate();
   const hasConnection = useAppStore((s) => s.hasUsableConnection);
@@ -33,6 +47,7 @@ export function WelcomePage() {
     };
   }, [open.mutate]);
 
+  // If a folder has no subtitle files, open.data.files is empty.
   const emptyResult = open.data?.files.length === 0;
 
   return (
@@ -92,11 +107,28 @@ export function WelcomePage() {
           </p>
         </div>
       )}
-      {emptyResult ? (
-        <p className="text-center text-[12px] text-(--color-alert)">
-          No subtitle files found here.
-        </p>
-      ) : null}
+
+      {/* Alert Dialog shown when the selected folder contains no subtitle files */}
+      <AlertDialog
+        open={emptyResult}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            open.reset();
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>No Subtitles Found</AlertDialogTitle>
+            <AlertDialogDescription>
+              The selected folder does not contain any <code className="font-mono text-xs">.ass</code> subtitle files. Please select a different folder to continue.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => open.reset()}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
