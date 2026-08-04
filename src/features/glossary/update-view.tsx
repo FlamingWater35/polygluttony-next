@@ -66,10 +66,9 @@ export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
     else run();
   };
 
-  // A div, not a button: the Append card contains checkboxes, and a <button>
-  // inside a <button> is invalid HTML. Clicking anywhere in a card selects its
-  // mode — including the checkboxes, which is what you want anyway, since
-  // touching Append's options means you're choosing Append.
+  // A div, not a button: clicking anywhere in a card selects its mode.
+  // role="radio" on a div (with the grouping div role="radiogroup" below)
+  // keeps this accessible without nesting interactive elements.
   const cardCls = (active: boolean) =>
     `cursor-pointer rounded-lg border p-5 text-left transition-colors ${
       active
@@ -90,7 +89,7 @@ export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
       />
 
       <div className="flex-1 overflow-auto p-5 flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4" role="radiogroup" aria-label="Update mode">
           {/* Append */}
           <div
             role="radio"
@@ -99,7 +98,10 @@ export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
             className={cardCls(mode === "append")}
             onClick={() => setMode("append")}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") setMode("append");
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setMode("append");
+              }
             }}
           >
             <div className="mb-3 flex items-center gap-2">
@@ -110,17 +112,6 @@ export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
               Scan the selected files and add only terms you don&apos;t already have. Every existing
               term keeps its current translation — including ones you edited by hand.
             </p>
-
-            <GlossaryBuildOptions
-              normalize={normalize}
-              onNormalizeChange={setNormalize}
-              personalize={personalize}
-              onPersonalizeChange={setPersonalize}
-              context={context}
-              onContextChange={setContext}
-              normalizeHelp="Merges duplicate names and fixes inconsistent spellings among the new terms."
-              disabled={mode !== "append"}
-            />
           </div>
 
           {/* Re-generate */}
@@ -131,7 +122,10 @@ export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
             className={cardCls(mode === "regenerate")}
             onClick={() => setMode("regenerate")}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") setMode("regenerate");
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setMode("regenerate");
+              }
             }}
           >
             <div className="mb-3 flex items-center gap-2">
@@ -148,6 +142,19 @@ export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
               with Import glossary…
             </p>
           </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-[color:var(--card)] p-5">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Options</h2>
+          <GlossaryBuildOptions
+            normalize={normalize}
+            onNormalizeChange={setNormalize}
+            personalize={personalize}
+            onPersonalizeChange={setPersonalize}
+            context={context}
+            onContextChange={setContext}
+            normalizeHelp="Merges duplicate names and fixes inconsistent spellings."
+          />
         </div>
 
         <HelpText>
