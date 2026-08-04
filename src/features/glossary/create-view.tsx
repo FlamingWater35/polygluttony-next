@@ -17,7 +17,7 @@ import { GlossaryBuildOptions } from "./glossary-build-options";
 
 export function CreateView({ view }: { view: ProjectView }) {
   const qc = useQueryClient();
-  const { startOp, endOp } = useGlossaryRun.getState();
+  const { startOp, setBuildMode, endOp } = useGlossaryRun.getState();
   const busy = useGlossaryRun((s) => s.busy);
   const summary = useGlossaryRun((s) => s.summary);
   const error = useGlossaryRun((s) => s.error);
@@ -47,6 +47,7 @@ export function CreateView({ view }: { view: ProjectView }) {
 
   const generate = () => {
     startOp("build", view.folder);
+    setBuildMode("append");
     // Rejected invoke = run never started; un-stick the page (step-3 lesson).
     ipc
       .startGlossaryBuild({

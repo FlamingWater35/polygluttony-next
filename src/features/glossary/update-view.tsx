@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc }) {
-  const { startOp, endOp, closeUpdate } = useGlossaryRun.getState();
+  const { startOp, setBuildMode, endOp, closeUpdate } = useGlossaryRun.getState();
   const busy = useGlossaryRun((s) => s.busy);
 
   const [mode, setMode] = useState<BuildMode>("append");
@@ -61,6 +61,8 @@ export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
     // finishes we land on the editor — which surfaces the post-build diff.
     closeUpdate();
     startOp("build", view.folder);
+    // The progress screen tells the truth about cancelling per mode.
+    setBuildMode(mode);
     // Rejected invoke = run never started; un-stick the page.
     ipc
       .startGlossaryBuild({

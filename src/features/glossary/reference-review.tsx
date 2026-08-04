@@ -99,9 +99,10 @@ export function ReferenceReview({ view }: { view: ProjectView }) {
   // Generate exactly like CreateView's primary action (defaults: normalize on,
   // personalize off) — the natural next step after pruning.
   const generate = () => {
-    const { startOp, endOp, closeReview: close } = useGlossaryRun.getState();
+    const { startOp, setBuildMode, endOp, closeReview: close } = useGlossaryRun.getState();
     close();
     startOp("build", view.folder);
+    setBuildMode("append");
     ipc
       .startGlossaryBuild({
         folder: view.folder,

@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { toast } from "sonner"
+import type { BuildMode } from "@/types/generated/BuildMode"
 import type { GlossaryBuildSummary } from "@/types/generated/GlossaryBuildSummary"
 import type { GlossaryDiff } from "@/types/generated/GlossaryDiff"
 import type { GlossaryEvent } from "@/types/generated/GlossaryEvent"
@@ -43,12 +44,19 @@ interface GlossaryRunStore {
   fileTick: number
   /** Free-text shown in the import run description ("40 translated files"). */
   opDetail: string | null
+  /** Mode of the running build; null when the op isn't a build. Drives the
+   *  progress screen's title and its cancel note — cancelling a re-generate
+   *  does NOT restore the previous glossary, cancelling an append is harmless. */
+  buildMode: BuildMode | null
   /** ③ Reference review screen visibility + the import that opened it. */
   reviewOpen: boolean
   /** Update screen (Append / Re-generate) visibility, folder-tagged like reviewOpen. */
   updateOpen: boolean
   lastImport: ReferenceSummary | null
   startOp: (op: GlossaryOp, folder: string, detail?: string) => void
+  /** Set right after `startOp("build", …)` — `startOp` clears it, so a stale
+   *  mode can never leak from one run into the next. */
+  setBuildMode: (mode: BuildMode) => void
   endOp: () => void
   setLastDiff: (d: GlossaryDiff) => void
   applyEvent: (e: GlossaryEvent) => void
@@ -74,6 +82,7 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
   error: null,
   fileTick: 0,
   opDetail: null,
+  buildMode: null,
   reviewOpen: false,
   updateOpen: false,
   lastImport: null,
@@ -85,6 +94,7 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
       busy: op,
       folder,
       opDetail: detail ?? null,
+      buildMode: null,
       phase: null,
       phaseDetail: null,
       done: 0,
@@ -95,6 +105,7 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
       error: null,
       summary: op === "build" ? null : s.summary,
     })),
+  setBuildMode: (buildMode) => set({ buildMode }),
   endOp: () => set({ busy: null }),
   setLastDiff: (lastDiff) => set({ lastDiff }),
   openReview: (folder, lastImport) =>
@@ -185,6 +196,6 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
       busy: null, folder: null, phase: null, phaseDetail: null, done: 0, total: 0,
       glossTerms: {}, glossTermCount: 0,
       logs: [], summary: null, lastDiff: null, error: null,
-      opDetail: null, reviewOpen: false, updateOpen: false, lastImport: null,
+      opDetail: null, buildMode: null, reviewOpen: false, updateOpen: false, lastImport: null,
     }),
 }))
