@@ -164,6 +164,17 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
         return Err(AppError::Other(msg));
     }
 
+    // Regenerate throws the old glossary away — and not only at the end: the
+    // first completed batch's incremental save (build.rs:256) already
+    // overwrites glossary.json with new-terms-only. Take the undo slot BEFORE
+    // claiming the run slot: a backup for a run that never starts is a
+    // harmless copy, whereas releasing a claimed slot on a failed backup is an
+    // extra error path for nothing. A backup we cannot write means we do not
+    // start.
+    if args.mode == BuildMode::Regenerate {
+        crate::glossary::io::backup_folder_glossary(&PathBuf::from(&args.folder))?;
+    }
+
     let prompt_pack =
         crate::prompts::GlossaryPrompts::resolve(&crate::prompts::overrides_dir(&app)?)?;
 

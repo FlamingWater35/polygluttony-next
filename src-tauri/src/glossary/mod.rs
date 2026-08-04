@@ -7,7 +7,7 @@
 //!
 //! Current submodules:
 //! - `model`       — `GlossaryDoc` IPC shape, term ops (merge, dedupe, parse)
-//! - `io`          — atomic pretty-printed save + load for the glossary JSON file
+//! - `io`          — atomic pretty-printed save + load, backup and import for the glossary JSON file
 //! - `diff`        — pure diff between two glossary snapshots (`GlossaryDiff`)
 //! - `world_detector` — keyword-heuristic world-type detection (no LLM)
 //! - `reference`   — reference terminology types, cache, ref/ discovery, async extractor (O11)

@@ -97,6 +97,7 @@ pub fn run() {
             commands::clear_reference,
             commands::load_reference,
             commands::save_reference,
+            commands::import_glossary,
             commands::export_glossary,
             commands::open_glossary_editor,
             commands::watch_glossary,

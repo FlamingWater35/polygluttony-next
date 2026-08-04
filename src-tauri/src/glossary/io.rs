@@ -31,7 +31,6 @@ pub fn save_folder_glossary(folder: &Path, glossary: &Glossary) -> AppResult<()>
 /// Not atomic, and deliberately so: the destination is a throwaway safety net,
 /// not the file the app reads. A torn backup is no worse than no backup, and a
 /// temp-and-rename dance here would just add a failure mode to the guard rail.
-#[allow(dead_code)] // wired to a Tauri command in a later step
 pub fn backup_folder_glossary(folder: &Path) -> AppResult<bool> {
     let src = folder.join("glossary.json");
     if !src.is_file() {
@@ -48,7 +47,6 @@ pub fn backup_folder_glossary(folder: &Path) -> AppResult<bool> {
 /// is lenient by design and drops unknown keys, so ANY valid JSON document
 /// parses into an empty glossary. Without this, importing an unrelated `.json`
 /// would silently succeed and wipe the folder's terms.
-#[allow(dead_code)] // wired to a Tauri command in a later step
 pub fn import_glossary_file(folder: &Path, src: &Path) -> AppResult<u32> {
     let dest = folder.join("glossary.json");
     // canonicalize fails for a non-existent path — fine: a missing dest can't

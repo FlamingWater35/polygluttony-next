@@ -8,7 +8,7 @@ use crate::config::store as config_store;
 use crate::error::{AppError, AppResult};
 use crate::glossary::build::BuildMode;
 use crate::glossary::diff::GlossaryDiff;
-use crate::glossary::io::{load_folder_glossary, save_folder_glossary};
+use crate::glossary::io::{import_glossary_file, load_folder_glossary, save_folder_glossary};
 use crate::glossary::model::GlossaryDoc;
 use crate::glossary::normalize::{normalize_pass, NormalizeReview};
 use crate::glossary::reference::{self, ReferenceStatus, ReferenceSummary, ReferenceTerminology};
@@ -164,6 +164,13 @@ pub fn load_reference(folder: String) -> Option<ReferenceTerminology> {
 #[tauri::command]
 pub fn save_reference(folder: String, terms: ReferenceTerminology) -> AppResult<()> {
     reference::save_cache(&PathBuf::from(folder), &terms)
+}
+
+/// Install a picked `glossary.json` as this folder's glossary, backing up any
+/// existing one to `glossary.prev.json`. Returns the imported term count.
+#[tauri::command]
+pub fn import_glossary(folder: String, src: String) -> AppResult<u32> {
+    import_glossary_file(&PathBuf::from(folder), &PathBuf::from(src))
 }
 
 /// Plain file copy; the UI supplies `dest` from a save dialog.
