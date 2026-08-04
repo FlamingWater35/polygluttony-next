@@ -168,8 +168,13 @@ pub fn save_reference(folder: String, terms: ReferenceTerminology) -> AppResult<
 
 /// Install a picked `glossary.json` as this folder's glossary, backing up any
 /// existing one to `glossary.prev.json`. Returns the imported term count.
+/// Claims the glossary-op slot — mutually exclusive with build, normalize,
+/// and reference import.
 #[tauri::command]
-pub fn import_glossary(folder: String, src: String) -> AppResult<u32> {
+pub async fn import_glossary(app: AppHandle, folder: String, src: String) -> AppResult<u32> {
+    run::claim_slot(&app, GlossaryOpKind::Import).await?;
+    // RAII: the guard releases the slot on every exit path, including panics.
+    let _guard = run::SlotGuard::new(app.clone());
     import_glossary_file(&PathBuf::from(folder), &PathBuf::from(src))
 }
 
