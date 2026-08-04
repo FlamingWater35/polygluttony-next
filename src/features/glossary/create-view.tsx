@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Sparkle, Books, Globe } from "@phosphor-icons/react";
+import { Sparkle, Books } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { ProjectView } from "@/types/generated/ProjectView";
 import type { WorldType } from "@/types/generated/WorldType";
@@ -9,10 +9,9 @@ import { useGlossaryRun } from "@/stores/glossary-store";
 import { referenceKey, referenceStatusKey, useImportReference } from "./use-import-reference";
 import { useImportGlossary } from "./use-import-glossary";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
 import { HelpText } from "@/components/help-text";
 import { PageHeader } from "@/components/page-header";
+import { GlossaryBuildOptions } from "./glossary-build-options";
 
 // ── CreateView ────────────────────────────────────────────────────────────────
 
@@ -28,12 +27,6 @@ export function CreateView({ view }: { view: ProjectView }) {
   const [normalize, setNormalize] = useState(true);
   const [personalize, setPersonalize] = useState(false);
   const [context, setContext] = useState("");
-
-  // Personalization connection availability
-  const { data: personalizationStatus } = useQuery({
-    queryKey: ["personalization-status"],
-    queryFn: ipc.personalizationStatus,
-  });
 
   // Reference import status chip / summary
   const { data: refStatus } = useQuery({
@@ -87,8 +80,6 @@ export function CreateView({ view }: { view: ProjectView }) {
   };
 
   // ── render ────────────────────────────────────────────────────────────────────
-
-  const personalizeConn = personalizationStatus;
 
   return (
     <div className="flex h-full flex-col">
@@ -145,62 +136,15 @@ export function CreateView({ view }: { view: ProjectView }) {
               choice.
             </p>
 
-            {/* Normalize checkbox */}
-            <label className="flex items-start gap-2.5 cursor-pointer mb-3">
-              <Checkbox
-                checked={normalize}
-                onCheckedChange={(v) => setNormalize(v === true)}
-                className="mt-0.5"
-              />
-              <span className="text-sm text-foreground select-none">
-                Clean up &amp; standardize
-              </span>
-            </label>
-            <div className="ml-6 mb-4">
-              <HelpText>Merges duplicate names and fixes inconsistent spellings.</HelpText>
-            </div>
-
-            {/* Personalize checkbox */}
-            <label
-              className={`flex items-start gap-2.5 mb-1 ${!personalizeConn ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-            >
-              <Checkbox
-                checked={personalize}
-                onCheckedChange={(v) => setPersonalize(v === true)}
-                disabled={!personalizeConn}
-                className="mt-0.5"
-              />
-              <span className="text-sm text-foreground select-none">
-                Look up established names online
-              </span>
-            </label>
-            <div className="ml-6 mb-3">
-              {!personalizeConn ? (
-                <p className="mt-1 flex items-start gap-1 text-[11px] leading-snug text-muted-foreground">
-                  <Globe className="mt-px size-3 shrink-0 text-muted-foreground" />
-                  <span>
-                    Needs a web-capable personalization connection — set one in Connections.
-                  </span>
-                </p>
-              ) : (
-                <HelpText>
-                  Searches the web for this show&apos;s commonly-used names, so your glossary
-                  matches what fans expect.
-                </HelpText>
-              )}
-            </div>
-
-            {/* Context textarea — shown when personalize is checked and available */}
-            {personalize && personalizeConn ? (
-              <div className="ml-6 mb-2">
-                <Textarea
-                  value={context}
-                  onChange={(e) => setContext(e.target.value)}
-                  placeholder="Show name (first line), wiki links or notes…"
-                  className="text-sm"
-                />
-              </div>
-            ) : null}
+            <GlossaryBuildOptions
+              normalize={normalize}
+              onNormalizeChange={setNormalize}
+              personalize={personalize}
+              onPersonalizeChange={setPersonalize}
+              context={context}
+              onContextChange={setContext}
+              normalizeHelp="Merges duplicate names and fixes inconsistent spellings."
+            />
           </div>
 
           {/* Import card */}
