@@ -6,6 +6,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::config::store as config_store;
 use crate::error::{AppError, AppResult};
+use crate::glossary::build::BuildMode;
 use crate::glossary::diff::GlossaryDiff;
 use crate::glossary::io::{load_folder_glossary, save_folder_glossary};
 use crate::glossary::model::GlossaryDoc;
@@ -34,6 +35,7 @@ pub fn save_glossary(folder: String, doc: GlossaryDoc) -> AppResult<()> {
 pub async fn start_glossary_build(
     app: AppHandle,
     folder: String,
+    mode: BuildMode,
     files: Vec<String>,
     world_type: WorldType,
     source_lang: String,
@@ -46,6 +48,7 @@ pub async fn start_glossary_build(
         app,
         StartArgs {
             folder,
+            mode,
             files,
             world_type,
             source_lang,

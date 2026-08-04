@@ -14,7 +14,7 @@ use crate::config::store as config_store;
 use crate::config::{AppConfig, Connection, Driver};
 use crate::error::{AppError, AppResult};
 use crate::events::{self, GlossaryEvent, RunEvent};
-use crate::glossary::build::{build_glossary, BuildJob};
+use crate::glossary::build::{build_glossary, BuildJob, BuildMode};
 use crate::glossary::world_detector::WorldType;
 use crate::llm::service::LlmService;
 use crate::llm::LlmDriver;
@@ -39,6 +39,7 @@ pub enum GlossaryOpKind {
 
 pub struct StartArgs {
     pub folder: String,
+    pub mode: BuildMode,
     pub files: Vec<String>,
     pub world_type: WorldType,
     pub source_lang: String,
@@ -188,6 +189,7 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
 
     let job = BuildJob {
         folder: PathBuf::from(&args.folder),
+        mode: args.mode,
         files: args.files,
         world_type: args.world_type.as_str().to_string(),
         pair,

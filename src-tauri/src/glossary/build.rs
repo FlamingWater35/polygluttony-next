@@ -18,8 +18,10 @@
 use std::path::PathBuf;
 
 use futures::stream::{FuturesOrdered, StreamExt};
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use ts_rs::TS;
 
 use crate::ass::{decode::decode_file, parse::parse_dialogues, tags::strip_for_text};
 use crate::events::{GlossaryBuildSummary, GlossaryEvent, GlossaryPhase, LogLevel};
@@ -41,10 +43,26 @@ pub fn glossary_batches(lines: &[String], batch_limit: Option<u32>) -> Vec<Strin
     lines.chunks(per).map(|c| c.join("\n")).collect()
 }
 
+/// Whether a build merges into the glossary already on disk or replaces it.
+///
+/// `Append` is the everyday case: existing terms win, new terms fill gaps.
+/// `Regenerate` starts from nothing, which makes it byte-for-byte the
+/// first-time build path — and destructive, so `run::start` takes a backup
+/// first (see `io::backup_folder_glossary`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub enum BuildMode {
+    Append,
+    Regenerate,
+}
+
 /// Everything O10 needs from the UI. The command layer assembles this from the
 /// project state + Glossary view options.
 pub struct BuildJob {
     pub folder: PathBuf,
+    /// Merge base selector — see `BuildMode`.
+    pub mode: BuildMode,
     /// File NAMES relative to `folder` (the Project view's `selected_files`).
     pub files: Vec<String>,
     /// EFFECTIVE world (override ?? detected) — the build never re-detects.
@@ -91,7 +109,12 @@ pub async fn build_glossary(
     tx: mpsc::Sender<GlossaryEvent>,
 ) {
     // Snapshot the pre-build glossary: merge target for every save + diff base.
-    let existing = load_folder_glossary(&job.folder);
+    // Regenerate deliberately starts from nothing — `run::start` has already
+    // copied the old file to glossary.prev.json.
+    let existing = match job.mode {
+        BuildMode::Append => load_folder_glossary(&job.folder),
+        BuildMode::Regenerate => None,
+    };
 
     // ── Loading: decode + parse + strip each selected file ─────────────────
     phase(&tx, GlossaryPhase::Loading, None).await;
@@ -449,6 +472,7 @@ mod tests {
     fn job(dir: &Path, files: Vec<String>, cancel: CancellationToken) -> BuildJob {
         BuildJob {
             folder: dir.to_path_buf(),
+            mode: BuildMode::Append,
             files,
             world_type: "xianxia".into(),
             pair: LanguagePair::from_codes("zh", "en").unwrap(),
@@ -886,5 +910,84 @@ mod tests {
         assert!(summary.normalized, "build must report normalized=true");
         let saved = load_folder_glossary(dir.path()).unwrap();
         assert_eq!(saved.characters.get("林动").unwrap(), "Lin Dong");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn regenerate_ignores_existing_and_replaces() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut existing = Glossary::new("xianxia");
+        existing.characters.insert("应欢欢".into(), "Ying Huanhuan".into());
+        crate::glossary::io::save_folder_glossary(dir.path(), &existing).unwrap();
+
+        write_ass(dir.path(), "e1.ass", &["一"]); // 1 line → 1 batch
+        let cancel = CancellationToken::new();
+        let d = ScriptedDriver::new(vec![Ok(r#"{"characters":{"林动":"Lin Dong"}}"#.into())]);
+        let svc = svc1(d, cancel.clone());
+        let mut j = job(dir.path(), vec!["e1.ass".into()], cancel);
+        j.mode = BuildMode::Regenerate;
+        let (_events, s) = run_and_collect(j, &svc, None).await;
+
+        let saved = load_folder_glossary(dir.path()).unwrap();
+        assert_eq!(saved.count(), 1, "regenerate must not merge the old glossary");
+        assert_eq!(saved.characters.get("林动").unwrap(), "Lin Dong");
+        assert!(!saved.characters.contains_key("应欢欢"), "old term must be gone");
+        assert_eq!(s.terms_final, 1);
+        // Diff base is None for a regenerate, so nothing reads as "removed".
+        assert_eq!(s.diff.total_added, 1);
+        assert_eq!(s.diff.total_removed, 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn append_mode_keeps_existing_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut existing = Glossary::new("xianxia");
+        existing.characters.insert("林动".into(), "EXISTING WINS".into());
+        crate::glossary::io::save_folder_glossary(dir.path(), &existing).unwrap();
+
+        write_ass(dir.path(), "e1.ass", &["一"]);
+        let cancel = CancellationToken::new();
+        let d = ScriptedDriver::new(vec![Ok(
+            r#"{"characters":{"林动":"ignored","应欢欢":"Ying Huanhuan"}}"#.into(),
+        )]);
+        let svc = svc1(d, cancel.clone());
+        let mut j = job(dir.path(), vec!["e1.ass".into()], cancel);
+        j.mode = BuildMode::Append;
+        let (_events, s) = run_and_collect(j, &svc, None).await;
+
+        let saved = load_folder_glossary(dir.path()).unwrap();
+        assert_eq!(saved.characters.get("林动").unwrap(), "EXISTING WINS");
+        assert_eq!(saved.characters.get("应欢欢").unwrap(), "Ying Huanhuan");
+        assert_eq!(s.terms_final, 2);
+        assert_eq!(s.diff.total_added, 1, "only the genuinely new term is added");
+    }
+
+    /// A regenerate whose every batch fails must be a no-op, not a wipe: no
+    /// incremental save fires, so the original glossary is still on disk.
+    #[tokio::test(start_paused = true)]
+    async fn regenerate_with_all_batches_failing_leaves_old_glossary() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut existing = Glossary::new("xianxia");
+        existing.characters.insert("应欢欢".into(), "Ying Huanhuan".into());
+        crate::glossary::io::save_folder_glossary(dir.path(), &existing).unwrap();
+
+        write_ass(dir.path(), "e1.ass", &["一", "二"]); // 2 batches
+        let cancel = CancellationToken::new();
+        let d = ScriptedDriver::new(vec![
+            Err(LlmError::Http { status: 400, body: "bad".into(), retry_after: None }),
+            Err(LlmError::Http { status: 400, body: "bad".into(), retry_after: None }),
+        ]);
+        let svc = svc1(d, cancel.clone());
+        let mut j = job(dir.path(), vec!["e1.ass".into()], cancel);
+        j.mode = BuildMode::Regenerate;
+        let (_events, s) = run_and_collect(j, &svc, None).await;
+
+        assert_eq!(s.batches_processed, 0);
+        assert_eq!(s.terms_final, 0);
+        let saved = load_folder_glossary(dir.path()).unwrap();
+        assert_eq!(
+            saved.characters.get("应欢欢").unwrap(),
+            "Ying Huanhuan",
+            "a failed regenerate must not destroy the glossary"
+        );
     }
 }
