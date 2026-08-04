@@ -7,6 +7,7 @@ import type { WorldType } from "@/types/generated/WorldType";
 import { ipc } from "@/lib/ipc";
 import { useGlossaryRun } from "@/stores/glossary-store";
 import { referenceKey, referenceStatusKey, useImportReference } from "./use-import-reference";
+import { useImportGlossary } from "./use-import-glossary";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -75,6 +76,7 @@ export function CreateView({ view }: { view: ProjectView }) {
   // ── import action (shared with the review screen's empty state) ─────────────
 
   const importFiles = useImportReference(view.folder);
+  const importGlossary = useImportGlossary(view.folder);
 
   // ── clear reference action ────────────────────────────────────────────────────
 
@@ -279,6 +281,13 @@ export function CreateView({ view }: { view: ProjectView }) {
       <div className="flex items-center gap-3 border-t border-border bg-[color:var(--popover)] px-5 py-3">
         <Button onClick={generate} disabled={!canGenerate}>
           Generate glossary →
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => void importGlossary()}
+          disabled={busy !== null}
+        >
+          Start from an existing glossary…
         </Button>
         <span className="text-[11px] text-muted-foreground">
           {selected.length === 0
