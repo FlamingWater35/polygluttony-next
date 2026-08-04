@@ -12,6 +12,7 @@ import {
   Plus,
   Sparkle,
   Stop,
+  UploadSimple,
   X,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -27,11 +28,22 @@ import { useGlossaryRun } from "@/stores/glossary-store";
 import { projectKey } from "@/features/project/use-project";
 import { glossaryKey, markLocalSave } from "./glossary-page";
 import { referenceKey } from "./use-import-reference";
+import { useImportGlossary } from "./use-import-glossary";
 import { DiffReview } from "./diff-review";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionHelp } from "@/components/section-help";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Category keys — keep in sync with `CATEGORIES` in src-tauri/src/glossary/model.rs.
 const CATEGORIES = [
@@ -69,6 +81,7 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
   const lastDiff = useGlossaryRun((s) => s.lastDiff);
   const summary = useGlossaryRun((s) => s.summary);
   const openReview = useGlossaryRun((s) => s.openReview);
+  const openUpdate = useGlossaryRun((s) => s.openUpdate);
 
   const { data: languages } = useQuery({
     queryKey: ["languages"],
@@ -97,6 +110,7 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
   const [editing, setEditing] = useState<{ cat: Category; source: string } | null>(null);
   const [review, setReview] = useState<NormalizeReview | null>(null);
   const [infoDiff, setInfoDiff] = useState<GlossaryDiff | null>(null);
+  const [confirmImport, setConfirmImport] = useState(false);
 
   // Build finished while we were elsewhere (or just now) → surface its diff +
   // any non-fatal errors. CreateView owns the built-nothing case.
@@ -219,6 +233,8 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
   const openInEditor = () =>
     ipc.openGlossaryEditor(view.folder).catch((e: unknown) => toast.error(String(e)));
 
+  const importGlossary = useImportGlossary(view.folder);
+
   // ── filtering ────────────────────────────────────────────────────────────────
 
   const q = search.trim().toLowerCase();
@@ -242,6 +258,9 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
         description="Double-click any term to edit. Changes auto-save to glossary.json."
         actions={
           <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => openUpdate(view.folder)} disabled={busy !== null}>
+              <Plus className="size-4" /> Update glossary
+            </Button>
             <Button size="sm" variant="secondary" onClick={normalize} disabled={busy !== null}>
               <Sparkle className="size-4" />
               {busy === "normalize" ? "Normalizing…" : "Normalize"}
@@ -262,6 +281,14 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
             </Button>
             <Button size="sm" variant="secondary" onClick={openInEditor}>
               <NotePencil className="size-4" /> Open in editor
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setConfirmImport(true)}
+              disabled={busy !== null}
+            >
+              <UploadSimple className="size-4" /> Import glossary…
             </Button>
             <Button size="sm" variant="secondary" onClick={() => void exportGlossary()}>
               <DownloadSimple className="size-4" /> Export
@@ -436,6 +463,24 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
       {infoDiff ? (
         <DiffReview diff={infoDiff} mode="info" onClose={() => setInfoDiff(null)} />
       ) : null}
+
+      <AlertDialog open={confirmImport} onOpenChange={setConfirmImport}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace this glossary?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The current {doc.count} term{doc.count !== 1 ? "s" : ""} will be replaced by the
+              glossary you pick. A copy is kept as glossary.prev.json.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void importGlossary()}>
+              Choose file…
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
