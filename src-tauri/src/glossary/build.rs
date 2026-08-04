@@ -108,11 +108,14 @@ pub async fn build_glossary(
     personalize_svc: Option<&LlmService>,
     tx: mpsc::Sender<GlossaryEvent>,
 ) {
-    // Snapshot the pre-build glossary: merge target for every save + diff base.
-    // Regenerate deliberately starts from nothing — `run::start` has already
-    // copied the old file to glossary.prev.json.
+    // The diff is always against what was on disk before the run — including a
+    // regenerate, where the merge base is deliberately empty but the user still
+    // needs to see what they lost. `existing` stays the MERGE base only (every
+    // incremental save + the final merge); `run::start` has already copied the
+    // old file to glossary.prev.json.
+    let diff_base = load_folder_glossary(&job.folder);
     let existing = match job.mode {
-        BuildMode::Append => load_folder_glossary(&job.folder),
+        BuildMode::Append => diff_base.clone(),
         BuildMode::Regenerate => None,
     };
 
@@ -156,7 +159,7 @@ pub async fn build_glossary(
             aborted: false,
             cancelled: false,
             errors: vec!["No text found in files".into()],
-            diff: GlossaryDiff::compute(existing.as_ref(), &result),
+            diff: GlossaryDiff::compute(diff_base.as_ref(), &result),
         };
         let _ = tx.send(GlossaryEvent::Done { summary }).await;
         return;
@@ -400,7 +403,7 @@ pub async fn build_glossary(
         aborted,
         cancelled,
         errors,
-        diff: GlossaryDiff::compute(existing.as_ref(), &result),
+        diff: GlossaryDiff::compute(diff_base.as_ref(), &result),
     };
     let _ = tx.send(GlossaryEvent::Done { summary }).await;
 }
@@ -932,9 +935,11 @@ mod tests {
         assert_eq!(saved.characters.get("林动").unwrap(), "Lin Dong");
         assert!(!saved.characters.contains_key("应欢欢"), "old term must be gone");
         assert_eq!(s.terms_final, 1);
-        // Diff base is None for a regenerate, so nothing reads as "removed".
+        // The diff base is what was ON DISK before the run, not the (empty)
+        // merge base — a regenerate must report the curated terms it discarded,
+        // at the one moment the user can still notice the loss.
         assert_eq!(s.diff.total_added, 1);
-        assert_eq!(s.diff.total_removed, 0);
+        assert_eq!(s.diff.total_removed, 1, "the discarded term must be reported as removed");
     }
 
     #[tokio::test(start_paused = true)]
