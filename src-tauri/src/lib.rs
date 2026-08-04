@@ -98,6 +98,7 @@ pub fn run() {
             commands::load_reference,
             commands::save_reference,
             commands::import_glossary,
+            commands::glossary_backup_status,
             commands::export_glossary,
             commands::open_glossary_editor,
             commands::watch_glossary,

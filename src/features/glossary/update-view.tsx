@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowsClockwise, Plus } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { ProjectView } from "@/types/generated/ProjectView";
@@ -6,7 +7,9 @@ import type { GlossaryDoc } from "@/types/generated/GlossaryDoc";
 import type { WorldType } from "@/types/generated/WorldType";
 import type { BuildMode } from "@/types/generated/BuildMode";
 import { ipc } from "@/lib/ipc";
+import { formatRelativeTime } from "@/lib/relative-time";
 import { useGlossaryRun } from "@/stores/glossary-store";
+import { glossaryBackupKey } from "./use-import-glossary";
 import { GlossaryBuildOptions } from "./glossary-build-options";
 import { Button } from "@/components/ui/button";
 import { HelpText } from "@/components/help-text";
@@ -35,6 +38,22 @@ export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
   const selected = view.prefs.selected_files;
   const effectiveWorld: WorldType = view.prefs.world_override ?? view.detected_world;
   const canRun = selected.length > 0 && busy === null;
+
+  // glossary.prev.json is a SINGLE slot: a re-generate overwrites whatever is
+  // in it. Say what is in there now, so nobody trades away an older undo copy
+  // without being told.
+  // staleTime 0 (not the 30 s default): the run that just replaced the backup
+  // unmounts this screen, and the dangerous case is re-opening it seconds later
+  // for a second re-generate — a cached "no backup exists yet" would be a lie
+  // at exactly the wrong moment.
+  const { data: backup } = useQuery({
+    queryKey: glossaryBackupKey(view.folder),
+    queryFn: () => ipc.glossaryBackupStatus(view.folder),
+    staleTime: 0,
+  });
+  const backupNote = backup
+    ? `Replacing the existing backup, which holds ${backup.count} terms from ${formatRelativeTime(Number(backup.modified))}.`
+    : "No backup exists yet, so your current terms will be saved to glossary.prev.json.";
 
   const run = () => {
     setConfirming(false);
@@ -137,8 +156,8 @@ export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
               selected files. Anything you edited by hand is lost.
             </p>
             <p className="text-[11px] text-muted-foreground">
-              A copy of the current glossary is kept as{" "}
-              <span className="text-foreground">glossary.prev.json</span> — you can bring it back
+              {backupNote} Whatever ends up in{" "}
+              <span className="text-foreground">glossary.prev.json</span> is what you can bring back
               with Import glossary…
             </p>
           </div>
@@ -181,7 +200,13 @@ export function UpdateView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
             <AlertDialogDescription>
               All {doc.count} current terms will be discarded and rebuilt from the{" "}
               {selected.length} selected file{selected.length !== 1 ? "s" : ""}. Hand-edited
-              translations are lost. A copy is kept as glossary.prev.json.
+              translations are lost. Your current terms are copied to glossary.prev.json.
+              <span
+                className={`mt-2 block ${backup ? "font-medium text-[color:var(--color-danger)]" : ""}`}
+              >
+                {backupNote}
+                {backup ? " Those terms will no longer be recoverable." : ""}
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -6,6 +6,12 @@ import { useAppStore } from "@/stores/app-store";
 import { glossaryKey } from "./glossary-page";
 import { projectKey } from "@/features/project/use-project";
 
+/** The single undo slot (glossary.prev.json) as the confirm dialogs describe it.
+ *  Every op that REPLACES the backup must invalidate this key. */
+export function glossaryBackupKey(folder: string) {
+  return ["glossary-backup", folder] as const;
+}
+
 /** Pick a glossary.json and install it into `folder`.
  *  Shared by CreateView ("Start from an existing glossary…") and EditorView
  *  ("Import glossary…"). Any existing glossary is backed up to
@@ -25,6 +31,9 @@ export function useImportGlossary(folder: string) {
       // rail badge with another folder's count.
       await qc.invalidateQueries({ queryKey: glossaryKey(folder) });
       await qc.invalidateQueries({ queryKey: projectKey(folder) });
+      // The import just overwrote glossary.prev.json with the replaced
+      // glossary — the "replacing the existing backup" disclosure is now stale.
+      await qc.invalidateQueries({ queryKey: glossaryBackupKey(folder) });
       if (useAppStore.getState().workdir === folder) {
         useAppStore.getState().setGlossaryTerms(count);
       }

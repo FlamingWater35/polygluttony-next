@@ -164,21 +164,29 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
         return Err(AppError::Other(msg));
     }
 
-    // Regenerate throws the old glossary away — and not only at the end: the
-    // first completed batch's incremental save (build.rs:256) already
-    // overwrites glossary.json with new-terms-only. Take the undo slot BEFORE
-    // claiming the run slot: a backup for a run that never starts is a
-    // harmless copy, whereas releasing a claimed slot on a failed backup is an
-    // extra error path for nothing. A backup we cannot write means we do not
-    // start.
-    if args.mode == BuildMode::Regenerate {
-        crate::glossary::io::backup_folder_glossary(&PathBuf::from(&args.folder))?;
-    }
-
     let prompt_pack =
         crate::prompts::GlossaryPrompts::resolve(&crate::prompts::overrides_dir(&app)?)?;
 
     let cancel = claim_slot(&app, GlossaryOpKind::Build).await?;
+
+    // Regenerate throws the old glossary away — and not only at the end: the
+    // first completed batch's incremental save (build.rs) already overwrites
+    // glossary.json with new-terms-only.
+    //
+    // The backup runs AFTER the slot claim because taking it is itself
+    // destructive: `glossary.prev.json` is a single slot, so this copy
+    // DESTROYS the previous undo copy. A run that cannot start (another op
+    // holds the slot) must not replace the user's only undo copy while
+    // reporting that nothing happened. `claim_slot` has already taken the slot
+    // and the `SlotGuard` is only created inside the spawned task, so a failing
+    // backup has to hand the slot back itself. A backup we cannot write means
+    // we do not start.
+    if args.mode == BuildMode::Regenerate {
+        if let Err(e) = crate::glossary::io::backup_folder_glossary(&PathBuf::from(&args.folder)) {
+            release_slot(&app).await;
+            return Err(e);
+        }
+    }
     let (tx, rx) = mpsc::channel::<GlossaryEvent>(512);
     spawn_forwarder(app.clone(), rx);
 

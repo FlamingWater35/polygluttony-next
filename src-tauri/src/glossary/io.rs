@@ -4,6 +4,9 @@
 
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
 use super::model::Glossary;
 use crate::error::{AppError, AppResult};
 
@@ -38,6 +41,40 @@ pub fn backup_folder_glossary(folder: &Path) -> AppResult<bool> {
     }
     std::fs::copy(&src, folder.join("glossary.prev.json"))?;
     Ok(true)
+}
+
+/// The single undo slot's contents, as shown in the destructive confirm
+/// dialogs. `modified` is the file's mtime in unix SECONDS (the frontend's
+/// `formatRelativeTime` takes seconds).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct GlossaryBackupInfo {
+    pub count: u32,
+    pub modified: i64,
+}
+
+/// What `glossary.prev.json` currently holds, for the "you are about to
+/// replace this" disclosure. `None` = no backup on disk yet.
+///
+/// A backup that parses to zero terms is reported as `None` too: it cannot be
+/// imported back (`import_glossary_file` rejects termless files), so promising
+/// the user something is recoverable from it would be a lie.
+pub fn backup_status(folder: &Path) -> Option<GlossaryBackupInfo> {
+    let path = folder.join("glossary.prev.json");
+    let text = std::fs::read_to_string(&path).ok()?;
+    let count = Glossary::from_json(&text)?.count() as u32;
+    if count == 0 {
+        return None;
+    }
+    // An unreadable mtime is not worth failing the disclosure over — 0 renders
+    // as a very old timestamp, and the count is the load-bearing part.
+    let modified = std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    Some(GlossaryBackupInfo { count, modified })
 }
 
 /// Install `src` as the folder's `glossary.json`, backing up any existing one.
@@ -121,6 +158,55 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert!(!backup_folder_glossary(dir.path()).unwrap());
         assert!(!dir.path().join("glossary.prev.json").exists());
+    }
+
+    #[test]
+    fn backup_status_none_when_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(backup_status(dir.path()).is_none());
+        // A glossary.json alone is not a backup.
+        let mut g = Glossary::new("xianxia");
+        g.characters.insert("林动".into(), "Lin Dong".into());
+        save_folder_glossary(dir.path(), &g).unwrap();
+        assert!(backup_status(dir.path()).is_none());
+    }
+
+    #[test]
+    fn backup_status_reports_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = Glossary::new("xianxia");
+        g.characters.insert("林动".into(), "Lin Dong".into());
+        g.locations.insert("青阳镇".into(), "Qingyang Town".into());
+        save_folder_glossary(dir.path(), &g).unwrap();
+        assert!(backup_folder_glossary(dir.path()).unwrap());
+
+        let info = backup_status(dir.path()).expect("a written backup must be reported");
+        assert_eq!(info.count, 2);
+        // Freshly written: the mtime must be a plausible recent unix-SECONDS
+        // stamp, not milliseconds and not the 0 fallback.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        assert!(
+            info.modified > 0 && (now - info.modified).abs() < 60,
+            "modified {} should be within a minute of now {now}",
+            info.modified
+        );
+    }
+
+    /// `Glossary::from_json` is lenient, so an unrelated JSON document parses
+    /// into an EMPTY glossary. Such a backup restores nothing (import rejects
+    /// it), so the disclosure must not claim a backup exists.
+    #[test]
+    fn backup_status_none_for_termless_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("glossary.prev.json"),
+            r#"{"name":"some other config","version":3}"#,
+        )
+        .unwrap();
+        assert!(backup_status(dir.path()).is_none());
     }
 
     #[test]

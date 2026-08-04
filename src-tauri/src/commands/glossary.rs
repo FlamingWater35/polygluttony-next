@@ -8,7 +8,9 @@ use crate::config::store as config_store;
 use crate::error::{AppError, AppResult};
 use crate::glossary::build::BuildMode;
 use crate::glossary::diff::GlossaryDiff;
-use crate::glossary::io::{import_glossary_file, load_folder_glossary, save_folder_glossary};
+use crate::glossary::io::{
+    import_glossary_file, load_folder_glossary, save_folder_glossary, GlossaryBackupInfo,
+};
 use crate::glossary::model::GlossaryDoc;
 use crate::glossary::normalize::{normalize_pass, NormalizeReview};
 use crate::glossary::reference::{self, ReferenceStatus, ReferenceSummary, ReferenceTerminology};
@@ -146,6 +148,14 @@ pub async fn import_reference_files(
 #[tauri::command]
 pub fn reference_status(folder: String) -> ReferenceStatus {
     reference::reference_status(&PathBuf::from(folder))
+}
+
+/// What `glossary.prev.json` holds right now (None = no backup yet). Powers
+/// the "you are about to replace this backup" disclosure on the destructive
+/// paths. A read — no slot claim.
+#[tauri::command]
+pub fn glossary_backup_status(folder: String) -> Option<GlossaryBackupInfo> {
+    crate::glossary::io::backup_status(&PathBuf::from(folder))
 }
 
 #[tauri::command]

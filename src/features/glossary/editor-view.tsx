@@ -23,12 +23,13 @@ import type { GlossaryBuildSummary } from "@/types/generated/GlossaryBuildSummar
 import type { NormalizeReview } from "@/types/generated/NormalizeReview";
 import type { Language } from "@/types/generated/Language";
 import { ipc } from "@/lib/ipc";
+import { formatRelativeTime } from "@/lib/relative-time";
 import { useAppStore } from "@/stores/app-store";
 import { useGlossaryRun } from "@/stores/glossary-store";
 import { projectKey } from "@/features/project/use-project";
 import { glossaryKey, markLocalSave } from "./glossary-page";
 import { referenceKey } from "./use-import-reference";
-import { useImportGlossary } from "./use-import-glossary";
+import { glossaryBackupKey, useImportGlossary } from "./use-import-glossary";
 import { DiffReview } from "./diff-review";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -102,6 +103,19 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
   const refCount = refTerms
     ? CATEGORIES.reduce((n, c) => n + refTerms[c].length, 0)
     : 0;
+
+  // An import replaces glossary.prev.json — the single undo slot. Disclose what
+  // is in there before the user trades it away (same wording as UpdateView).
+  // staleTime 0: this view remounts after every build, and the backup it
+  // describes may have just been replaced by that build (see UpdateView).
+  const { data: backup } = useQuery({
+    queryKey: glossaryBackupKey(view.folder),
+    queryFn: () => ipc.glossaryBackupStatus(view.folder),
+    staleTime: 0,
+  });
+  const backupNote = backup
+    ? `Replacing the existing backup, which holds ${backup.count} terms from ${formatRelativeTime(Number(backup.modified))}.`
+    : "No backup exists yet, so your current terms will be saved to glossary.prev.json.";
 
   const [search, setSearch] = useState("");
   const [addCat, setAddCat] = useState<Category>("characters");
@@ -471,6 +485,12 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
             <AlertDialogDescription>
               The current {doc.count} term{doc.count !== 1 ? "s" : ""} will be replaced by the
               glossary you pick. A copy is kept as glossary.prev.json.
+              <span
+                className={`mt-2 block ${backup ? "font-medium text-[color:var(--color-danger)]" : ""}`}
+              >
+                {backupNote}
+                {backup ? " Those terms will no longer be recoverable." : ""}
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
