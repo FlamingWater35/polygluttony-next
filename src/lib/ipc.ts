@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AppInfo } from "@/types/generated/AppInfo";
+import type { BuildMode } from "@/types/generated/BuildMode";
 import type { Connection } from "@/types/generated/Connection";
 import type { ConnectionsView } from "@/types/generated/ConnectionsView";
 import type { Preset } from "@/types/generated/Preset";
@@ -90,6 +91,7 @@ export const ipc = {
   /** O10 — start a glossary build run (events on glossary://event). */
   startGlossaryBuild: (args: {
     folder: string
+    mode: BuildMode
     files: string[]
     worldType: WorldType
     sourceLang: string
@@ -115,6 +117,9 @@ export const ipc = {
   /** Persist review-screen pruning. */
   saveReference: (folder: string, terms: ReferenceTerminology) =>
     invoke<void>("save_reference", { folder, terms }),
+  /** Install a picked glossary.json into this folder; returns the term count. */
+  importGlossary: (folder: string, src: string) =>
+    invoke<number>("import_glossary", { folder, src }),
   exportGlossary: (folder: string, dest: string) =>
     invoke<void>("export_glossary", { folder, dest }),
   /** O15 — open glossary.json in the OS default editor. */

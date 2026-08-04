@@ -45,6 +45,8 @@ interface GlossaryRunStore {
   opDetail: string | null
   /** ③ Reference review screen visibility + the import that opened it. */
   reviewOpen: boolean
+  /** Update screen (Append / Re-generate) visibility, folder-tagged like reviewOpen. */
+  updateOpen: boolean
   lastImport: ReferenceSummary | null
   startOp: (op: GlossaryOp, folder: string, detail?: string) => void
   endOp: () => void
@@ -52,6 +54,8 @@ interface GlossaryRunStore {
   applyEvent: (e: GlossaryEvent) => void
   openReview: (folder: string, lastImport?: ReferenceSummary) => void
   closeReview: () => void
+  openUpdate: (folder: string) => void
+  closeUpdate: () => void
   reset: () => void
 }
 
@@ -71,6 +75,7 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
   fileTick: 0,
   opDetail: null,
   reviewOpen: false,
+  updateOpen: false,
   lastImport: null,
 
   // busy is set optimistically before the invoke; a rejected invoke must call
@@ -101,6 +106,14 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
       lastImport: lastImport ?? s.lastImport,
     })),
   closeReview: () => set({ reviewOpen: false, lastImport: null }),
+  openUpdate: (folder) =>
+    set((s) => ({
+      updateOpen: true,
+      // Same folder-tagging as openReview: lets the folder-change reset close
+      // an update screen opened before any run this session.
+      folder: s.folder ?? folder,
+    })),
+  closeUpdate: () => set({ updateOpen: false }),
 
   applyEvent: (e) =>
     set((s) => {
@@ -172,6 +185,6 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
       busy: null, folder: null, phase: null, phaseDetail: null, done: 0, total: 0,
       glossTerms: {}, glossTermCount: 0,
       logs: [], summary: null, lastDiff: null, error: null,
-      opDetail: null, reviewOpen: false, lastImport: null,
+      opDetail: null, reviewOpen: false, updateOpen: false, lastImport: null,
     }),
 }))

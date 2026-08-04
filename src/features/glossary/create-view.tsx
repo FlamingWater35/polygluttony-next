@@ -57,6 +57,7 @@ export function CreateView({ view }: { view: ProjectView }) {
     ipc
       .startGlossaryBuild({
         folder: view.folder,
+        mode: "append",
         files: selected,
         worldType: effectiveWorld,
         sourceLang: view.prefs.source_lang,

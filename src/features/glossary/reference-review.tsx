@@ -105,6 +105,7 @@ export function ReferenceReview({ view }: { view: ProjectView }) {
     ipc
       .startGlossaryBuild({
         folder: view.folder,
+        mode: "append",
         files: view.prefs.selected_files,
         worldType: view.prefs.world_override ?? view.detected_world,
         sourceLang: view.prefs.source_lang,
