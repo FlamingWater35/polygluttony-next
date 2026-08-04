@@ -21,9 +21,33 @@ mod prompts;
 mod translation;
 mod validation;
 
+/// Work around a GTK3/NVIDIA crash on Wayland.
+///
+/// NVIDIA's EGL driver negotiates explicit sync (`wp_linux_drm_syncobj`) on the
+/// toplevel surface, but GTK3 then attaches buffers and commits without setting
+/// an acquire point. The compositor rejects that as a protocol violation and
+/// kills us: the window paints once, blank, then dies with
+/// `Error 71 (Protocol error) dispatching to Wayland display`.
+///
+/// Opting out of explicit sync falls back to implicit sync and renders fine.
+/// The variable is NVIDIA-specific and ignored by other drivers, and we never
+/// override an existing value so it stays overridable from the environment.
+#[cfg(target_os = "linux")]
+fn disable_nvidia_explicit_sync() {
+    if std::env::var_os("WAYLAND_DISPLAY").is_some()
+        && std::env::var_os("__NV_DISABLE_EXPLICIT_SYNC").is_none()
+    {
+        std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
+    }
+}
+
 /// Entry point invoked from `main.rs` (and the mobile entry point).
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Must happen before Tauri initialises GTK and brings up the EGL surface.
+    #[cfg(target_os = "linux")]
+    disable_nvidia_explicit_sync();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
