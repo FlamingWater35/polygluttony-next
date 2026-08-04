@@ -146,7 +146,13 @@ pub async fn build_glossary(
     if all_lines.is_empty() {
         // Nothing to extract from: report (never silently no-op) and write
         // nothing — `glossary_builder.py:121-126`.
+        //
+        // This path writes NOTHING, so the on-disk glossary is still
+        // `diff_base` and the diff must say "no changes". Diffing `result`
+        // (empty for a regenerate) against `diff_base` would report a phantom
+        // wipe of a glossary that is sitting intact on disk.
         let result = merged_with_existing(existing.as_ref(), &Glossary::new(&job.world_type));
+        let persisted = diff_base.clone().unwrap_or_else(|| Glossary::new(&job.world_type));
         let summary = GlossaryBuildSummary {
             world_type: job.world_type.clone(),
             files_processed,
@@ -159,7 +165,7 @@ pub async fn build_glossary(
             aborted: false,
             cancelled: false,
             errors: vec!["No text found in files".into()],
-            diff: GlossaryDiff::compute(diff_base.as_ref(), &result),
+            diff: GlossaryDiff::compute(diff_base.as_ref(), &persisted),
         };
         let _ = tx.send(GlossaryEvent::Done { summary }).await;
         return;
@@ -388,6 +394,15 @@ pub async fn build_glossary(
         }
     }
 
+    // Both saves are guarded by !is_empty(), so an empty result means nothing was
+    // written and the on-disk glossary is still diff_base. Diffing result against
+    // diff_base there would report a phantom wipe of a glossary that is intact.
+    let persisted = if result.is_empty() {
+        diff_base.clone().unwrap_or_else(|| Glossary::new(&job.world_type))
+    } else {
+        result.clone()
+    };
+
     // Recompute NOW, not at extraction-loop exit: a cancel that arrived during
     // normalize/personalize must still be reported as a cancel.
     let cancelled = job.cancel.is_cancelled() && !aborted;
@@ -403,7 +418,7 @@ pub async fn build_glossary(
         aborted,
         cancelled,
         errors,
-        diff: GlossaryDiff::compute(diff_base.as_ref(), &result),
+        diff: GlossaryDiff::compute(diff_base.as_ref(), &persisted),
     };
     let _ = tx.send(GlossaryEvent::Done { summary }).await;
 }
@@ -964,6 +979,64 @@ mod tests {
         assert_eq!(saved.characters.get("应欢欢").unwrap(), "Ying Huanhuan");
         assert_eq!(s.terms_final, 2);
         assert_eq!(s.diff.total_added, 1, "only the genuinely new term is added");
+    }
+
+    /// A regenerate that persists NOTHING must not report a wipe. Both saves
+    /// are guarded by `!is_empty()`, so the original glossary is untouched on
+    /// disk — a diff of `result` (empty) against the on-disk base would strike
+    /// every curated term through in the post-build "Glossary changes" modal
+    /// at the exact moment nothing was lost.
+    #[tokio::test(start_paused = true)]
+    async fn regenerate_with_no_terms_reports_no_removals() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut existing = Glossary::new("xianxia");
+        existing.characters.insert("应欢欢".into(), "Ying Huanhuan".into());
+        existing.locations.insert("青阳镇".into(), "Qingyang Town".into());
+        crate::glossary::io::save_folder_glossary(dir.path(), &existing).unwrap();
+
+        write_ass(dir.path(), "e1.ass", &["一", "二"]); // 2 batches
+        let cancel = CancellationToken::new();
+        let d = ScriptedDriver::new(vec![
+            Err(LlmError::Http { status: 400, body: "bad".into(), retry_after: None }),
+            Err(LlmError::Http { status: 400, body: "bad".into(), retry_after: None }),
+        ]);
+        let svc = svc1(d, cancel.clone());
+        let mut j = job(dir.path(), vec!["e1.ass".into()], cancel);
+        j.mode = BuildMode::Regenerate;
+        let (_events, s) = run_and_collect(j, &svc, None).await;
+
+        assert_eq!(s.diff.total_removed, 0, "nothing was written, so nothing was removed");
+        assert!(!s.diff.has_changes, "an unchanged glossary must not pop the diff modal");
+        // …and the glossary really is intact.
+        let saved = load_folder_glossary(dir.path()).unwrap();
+        assert_eq!(saved.count(), 2);
+        assert_eq!(saved.characters.get("应欢欢").unwrap(), "Ying Huanhuan");
+        assert_eq!(saved.locations.get("青阳镇").unwrap(), "Qingyang Town");
+    }
+
+    /// The other side of the same coin: a regenerate that DOES persist must
+    /// still report what it discarded (the diff base is the pre-run on-disk
+    /// glossary, not the empty merge base).
+    #[tokio::test(start_paused = true)]
+    async fn regenerate_that_persists_reports_removals() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut existing = Glossary::new("xianxia");
+        existing.characters.insert("应欢欢".into(), "Ying Huanhuan".into());
+        crate::glossary::io::save_folder_glossary(dir.path(), &existing).unwrap();
+
+        write_ass(dir.path(), "e1.ass", &["一"]); // 1 batch
+        let cancel = CancellationToken::new();
+        // The rebuild never produces 应欢欢 — the curated term is gone.
+        let d = ScriptedDriver::new(vec![Ok(r#"{"characters":{"林动":"Lin Dong"}}"#.into())]);
+        let svc = svc1(d, cancel.clone());
+        let mut j = job(dir.path(), vec!["e1.ass".into()], cancel);
+        j.mode = BuildMode::Regenerate;
+        let (_events, s) = run_and_collect(j, &svc, None).await;
+
+        assert!(s.diff.total_removed > 0, "a persisted regenerate must report its losses");
+        assert!(s.diff.has_changes);
+        let saved = load_folder_glossary(dir.path()).unwrap();
+        assert!(!saved.characters.contains_key("应欢欢"));
     }
 
     /// A regenerate whose every batch fails must be a no-op, not a wipe: no

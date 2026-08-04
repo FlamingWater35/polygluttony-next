@@ -114,7 +114,7 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
     staleTime: 0,
   });
   const backupNote = backup
-    ? `Replacing the existing backup, which holds ${backup.count} terms from ${formatRelativeTime(Number(backup.modified))}.`
+    ? `Replacing the existing backup, which holds ${backup.count} term${backup.count !== 1 ? "s" : ""} from ${formatRelativeTime(Number(backup.modified))}.`
     : "No backup exists yet, so your current terms will be saved to glossary.prev.json.";
 
   const [search, setSearch] = useState("");
