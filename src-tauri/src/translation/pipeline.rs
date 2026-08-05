@@ -994,7 +994,7 @@ mod tests {
     async fn untranslated_issue_cap_adds_aggregate_overflow_entry() {
         // 14 lines; only id 1 translates → 13 untranslated → 10 per-line
         // issues (ids 2..=11) + one aggregate "…and 3 more".
-        let lines: Vec<&str> = std::iter::repeat("你好").take(14).collect();
+        let lines: Vec<&str> = std::iter::repeat_n("你好", 14).collect();
         let src = ass_source(&lines);
         let mut responses: Vec<Result<String, crate::llm::error::LlmError>> =
             vec![Ok(ok_batch(&[(1, "Hello there friend")]))];

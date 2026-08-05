@@ -11,6 +11,7 @@ import { BuildProgress } from "./build-progress";
 import { ImportProgress } from "./import-progress";
 import { EditorView } from "./editor-view";
 import { ReferenceReview } from "./reference-review";
+import { UpdateView } from "./update-view";
 
 export function glossaryKey(folder: string) {
   return ["glossary", folder] as const;
@@ -32,6 +33,7 @@ export function GlossaryPage() {
   const busy = useGlossaryRun((s) => s.busy);
   const fileTick = useGlossaryRun((s) => s.fileTick);
   const reviewOpen = useGlossaryRun((s) => s.reviewOpen);
+  const updateOpen = useGlossaryRun((s) => s.updateOpen);
   const { data: view } = useProject(workdir ?? "");
   const { data: doc, isPending } = useQuery({
     queryKey: glossaryKey(workdir ?? ""),
@@ -93,5 +95,6 @@ export function GlossaryPage() {
   if (!view || isPending) return null;
   if (reviewOpen) return <ReferenceReview view={view} />;
   if (!doc || doc.count === 0) return <CreateView view={view} />;
+  if (updateOpen) return <UpdateView view={view} doc={doc} />;
   return <EditorView view={view} doc={doc} />;
 }

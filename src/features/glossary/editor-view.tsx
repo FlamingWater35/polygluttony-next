@@ -12,6 +12,7 @@ import {
   Plus,
   Sparkle,
   Stop,
+  UploadSimple,
   X,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -22,16 +23,28 @@ import type { GlossaryBuildSummary } from "@/types/generated/GlossaryBuildSummar
 import type { NormalizeReview } from "@/types/generated/NormalizeReview";
 import type { Language } from "@/types/generated/Language";
 import { ipc } from "@/lib/ipc";
+import { formatRelativeTime } from "@/lib/relative-time";
 import { useAppStore } from "@/stores/app-store";
 import { useGlossaryRun } from "@/stores/glossary-store";
 import { projectKey } from "@/features/project/use-project";
 import { glossaryKey, markLocalSave } from "./glossary-page";
 import { referenceKey } from "./use-import-reference";
+import { glossaryBackupKey, useImportGlossary } from "./use-import-glossary";
 import { DiffReview } from "./diff-review";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionHelp } from "@/components/section-help";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Category keys — keep in sync with `CATEGORIES` in src-tauri/src/glossary/model.rs.
 const CATEGORIES = [
@@ -69,6 +82,7 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
   const lastDiff = useGlossaryRun((s) => s.lastDiff);
   const summary = useGlossaryRun((s) => s.summary);
   const openReview = useGlossaryRun((s) => s.openReview);
+  const openUpdate = useGlossaryRun((s) => s.openUpdate);
 
   const { data: languages } = useQuery({
     queryKey: ["languages"],
@@ -90,6 +104,19 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
     ? CATEGORIES.reduce((n, c) => n + refTerms[c].length, 0)
     : 0;
 
+  // An import replaces glossary.prev.json — the single undo slot. Disclose what
+  // is in there before the user trades it away (same wording as UpdateView).
+  // staleTime 0: this view remounts after every build, and the backup it
+  // describes may have just been replaced by that build (see UpdateView).
+  const { data: backup } = useQuery({
+    queryKey: glossaryBackupKey(view.folder),
+    queryFn: () => ipc.glossaryBackupStatus(view.folder),
+    staleTime: 0,
+  });
+  const backupNote = backup
+    ? `Replacing the existing backup, which holds ${backup.count} term${backup.count !== 1 ? "s" : ""} from ${formatRelativeTime(Number(backup.modified))}.`
+    : "No backup exists yet, so your current terms will be saved to glossary.prev.json.";
+
   const [search, setSearch] = useState("");
   const [addCat, setAddCat] = useState<Category>("characters");
   const [addSrc, setAddSrc] = useState("");
@@ -97,6 +124,7 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
   const [editing, setEditing] = useState<{ cat: Category; source: string } | null>(null);
   const [review, setReview] = useState<NormalizeReview | null>(null);
   const [infoDiff, setInfoDiff] = useState<GlossaryDiff | null>(null);
+  const [confirmImport, setConfirmImport] = useState(false);
 
   // Build finished while we were elsewhere (or just now) → surface its diff +
   // any non-fatal errors. CreateView owns the built-nothing case.
@@ -219,6 +247,8 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
   const openInEditor = () =>
     ipc.openGlossaryEditor(view.folder).catch((e: unknown) => toast.error(String(e)));
 
+  const importGlossary = useImportGlossary(view.folder);
+
   // ── filtering ────────────────────────────────────────────────────────────────
 
   const q = search.trim().toLowerCase();
@@ -242,6 +272,9 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
         description="Double-click any term to edit. Changes auto-save to glossary.json."
         actions={
           <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => openUpdate(view.folder)} disabled={busy !== null}>
+              <Plus className="size-4" /> Update glossary
+            </Button>
             <Button size="sm" variant="secondary" onClick={normalize} disabled={busy !== null}>
               <Sparkle className="size-4" />
               {busy === "normalize" ? "Normalizing…" : "Normalize"}
@@ -262,6 +295,14 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
             </Button>
             <Button size="sm" variant="secondary" onClick={openInEditor}>
               <NotePencil className="size-4" /> Open in editor
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setConfirmImport(true)}
+              disabled={busy !== null}
+            >
+              <UploadSimple className="size-4" /> Import glossary…
             </Button>
             <Button size="sm" variant="secondary" onClick={() => void exportGlossary()}>
               <DownloadSimple className="size-4" /> Export
@@ -436,6 +477,30 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
       {infoDiff ? (
         <DiffReview diff={infoDiff} mode="info" onClose={() => setInfoDiff(null)} />
       ) : null}
+
+      <AlertDialog open={confirmImport} onOpenChange={setConfirmImport}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace this glossary?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The current {doc.count} term{doc.count !== 1 ? "s" : ""} will be replaced by the
+              glossary you pick. A copy is kept as glossary.prev.json.
+              <span
+                className={`mt-2 block ${backup ? "font-medium text-[color:var(--color-danger)]" : ""}`}
+              >
+                {backupNote}
+                {backup ? " Those terms will no longer be recoverable." : ""}
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void importGlossary()}>
+              Choose file…
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

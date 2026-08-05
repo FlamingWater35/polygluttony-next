@@ -6,8 +6,11 @@ use tauri::{AppHandle, Manager};
 
 use crate::config::store as config_store;
 use crate::error::{AppError, AppResult};
+use crate::glossary::build::BuildMode;
 use crate::glossary::diff::GlossaryDiff;
-use crate::glossary::io::{load_folder_glossary, save_folder_glossary};
+use crate::glossary::io::{
+    import_glossary_file, load_folder_glossary, save_folder_glossary, GlossaryBackupInfo,
+};
 use crate::glossary::model::GlossaryDoc;
 use crate::glossary::normalize::{normalize_pass, NormalizeReview};
 use crate::glossary::reference::{self, ReferenceStatus, ReferenceSummary, ReferenceTerminology};
@@ -34,6 +37,7 @@ pub fn save_glossary(folder: String, doc: GlossaryDoc) -> AppResult<()> {
 pub async fn start_glossary_build(
     app: AppHandle,
     folder: String,
+    mode: BuildMode,
     files: Vec<String>,
     world_type: WorldType,
     source_lang: String,
@@ -46,6 +50,7 @@ pub async fn start_glossary_build(
         app,
         StartArgs {
             folder,
+            mode,
             files,
             world_type,
             source_lang,
@@ -145,6 +150,14 @@ pub fn reference_status(folder: String) -> ReferenceStatus {
     reference::reference_status(&PathBuf::from(folder))
 }
 
+/// What `glossary.prev.json` holds right now (None = no backup yet). Powers
+/// the "you are about to replace this backup" disclosure on the destructive
+/// paths. A read — no slot claim.
+#[tauri::command]
+pub fn glossary_backup_status(folder: String) -> Option<GlossaryBackupInfo> {
+    crate::glossary::io::backup_status(&PathBuf::from(folder))
+}
+
 #[tauri::command]
 pub fn clear_reference(folder: String) -> AppResult<()> {
     reference::clear_cache(&PathBuf::from(folder))
@@ -161,6 +174,18 @@ pub fn load_reference(folder: String) -> Option<ReferenceTerminology> {
 #[tauri::command]
 pub fn save_reference(folder: String, terms: ReferenceTerminology) -> AppResult<()> {
     reference::save_cache(&PathBuf::from(folder), &terms)
+}
+
+/// Install a picked `glossary.json` as this folder's glossary, backing up any
+/// existing one to `glossary.prev.json`. Returns the imported term count.
+/// Claims the glossary-op slot — mutually exclusive with build, normalize,
+/// and reference import.
+#[tauri::command]
+pub async fn import_glossary(app: AppHandle, folder: String, src: String) -> AppResult<u32> {
+    run::claim_slot(&app, GlossaryOpKind::Import).await?;
+    // RAII: the guard releases the slot on every exit path, including panics.
+    let _guard = run::SlotGuard::new(app.clone());
+    import_glossary_file(&PathBuf::from(folder), &PathBuf::from(src))
 }
 
 /// Plain file copy; the UI supplies `dest` from a save dialog.
