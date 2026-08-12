@@ -192,8 +192,8 @@ mod tests {
         assert_eq!(presets[1].driver, Some(Driver::Openai)); // google
         assert_eq!(presets[2].driver, Some(Driver::OpenaiResponses)); // openai
         assert_eq!(presets[3].driver, Some(Driver::Openai)); // ollama
-        assert_eq!(presets[3].driver, Some(Driver::Openai)); // openrouter
-        assert_eq!(presets[4].driver, None); // custom = auto-detect
+        assert_eq!(presets[4].driver, Some(Driver::Openai)); // openrouter
+        assert_eq!(presets[5].driver, None); // custom = auto-detect
         assert!(presets[0].models.iter().any(|m| m.starts_with("claude")));
     }
 }
